@@ -1,10 +1,10 @@
 <div align="center">
- 
+
 <img src="https://img.shields.io/badge/🏢_Nexus_RWA-Protocol-0052FF?style=for-the-badge&labelColor=0f172a&color=0052FF" height="36"/>
 
 # Nexus RWA Protocol
 ### Institutional-Grade Real-World Asset Tokenization · Base Mainnet
-   
+
 <br>
 
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](https://opensource.org/licenses/MIT)
@@ -15,13 +15,13 @@
 <br>
 
 > **Bridging Traditional Finance (TradFi) and Decentralized Finance (DeFi) safely.**<br>
-> A robust smart contract engine that embeds global compliance, identity verification (KYC), 
+> A robust smart contract engine that embeds global compliance, identity verification (KYC),
 > real-time NAV pricing, and automated yield distribution directly into the token layer.
 
 <br>
 
-<a href="#" target="_blank">🌐 DApp Portal (Coming Soon)</a> &nbsp;·&nbsp;
-<a href="https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594" target="_blank">🔗 Core Asset Registry</a>
+🌐 DApp Portal (Coming Soon) &nbsp;·&nbsp;
+[🔗 Core Asset Registry](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594)
 
 </div>
 
@@ -29,7 +29,7 @@
 
 ## 📖 Overview
 
-Standard ERC-20 tokens are permissionless, making them unsuitable for heavily regulated Real-World Assets (RWAs) like US Treasury Bills, Real Estate, or Corporate Bonds. 
+Standard ERC-20 tokens are permissionless, making them unsuitable for heavily regulated Real-World Assets (RWAs) like US Treasury Bills, Real Estate, or Corporate Bonds.
 
 The **Nexus RWA Protocol** solves this by abstracting legal complexity into immutable code. Every token mint, burn, and peer-to-peer transfer is intercepted and validated against an on-chain compliance engine. It ensures that tokens can only be held by verified, non-sanctioned investors who meet specific jurisdictional and accreditation rules. Coupled with Chainlink-automated Merkle yield drops and circuit-breaking NAV oracles, it provides a complete ecosystem for tokenized securities.
 
@@ -53,15 +53,14 @@ The protocol separates concerns into distinct, hyper-optimized smart contracts. 
 ```mermaid
 graph TD
     User["Investor Wallet"] -->|"transfer()"| Token["RWAToken (ERC20)"]
-    
+
     Token -.->|"1. intercept _update()"| CE["ComplianceEngine"]
-    
+
     CE -->|"2. Check Rules"| AR["AssetRegistry"]
     CE -->|"3. Check KYC/Sanction"| IR["IdentityRegistry"]
-    
+
     Oracle["NAV Oracle"] -.->|"Price Feeds"| Chainlink["Chainlink Aggregators"]
     Yield["Yield Distributor"] -.->|"Automated Epochs"| CL_Upkeep["Chainlink Automation"]
-
 ```
 
 ### 1. `IdentityRegistry.sol` (ERC-3643 Inspired)
@@ -85,6 +84,7 @@ Integrates with Chainlink Data Feeds to provide real-time Net Asset Value (NAV).
 A hyper-efficient, pull-based yield distributor. Uses off-chain Merkle Trees to allocate yield (USDC) to thousands of investors without blowing block gas limits. Cycles are seamlessly advanced via Chainlink Automation.
 
 ---
+
 ## 🛡️ The Nexus Difference: Security by Design
 
 Most traditional RWA protocols rely heavily on centralized multisigs, delayed off-chain API approvals for transfers, and bloated monolithic contracts. **Nexus RWA** introduces a radically different, mathematically verified approach:
@@ -94,13 +94,14 @@ Most traditional RWA protocols rely heavily on centralized multisigs, delayed of
 * **Mathematical Certainty:** Instead of relying solely on basic unit testing, the protocol's core constraints (e.g., *Total Supply <= Supply Cap*, *Blocked Investors = Zero Balance*) are mathematically proven against millions of chaotic, randomized state transitions using **Stateful Invariant Fuzzing**.
 * **Zero-Trust Legal Recovery:** Court-ordered asset recoveries (`forcedTransfer`) do not require dangerous proxy upgrades. They are natively built-in, role-gated, and emit immutable cryptographic proofs on-chain.
 
-> 📊 **Full Security Report:** For the comprehensive Slither static analysis, detailed invariant fuzzing sequences, and gas-optimization breakdowns, please refer to the [`/audit`](./audit) directory.
+---
 
 ## 🔒 Security & Testing Model
 
 * **Mathematically Proven Security:** 100% test coverage across 219+ unit/integration tests and stateful invariant fuzzing (5,000+ random sequence calls) verifying non-whitelisted balance, cap breach, and yield double-claim invariants.
-* **Audit & Static Analysis:** Built with strict CEI patterns and verified via Slither (v0.10) with 0 Critical / 0 High vulnerabilities. Complete findings and design trade-offs are documented in [`security-audit.md`](./security-audit.md).
+* **Audit & Static Analysis:** Built with strict CEI patterns and verified via Slither (v0.10) with 0 Critical / 0 High vulnerabilities. Complete findings and design trade-offs are documented in security-report.md
 
+---
 
 ## ✅ Deployed Contracts (Base Mainnet)
 
@@ -108,15 +109,14 @@ The core protocol is live, verified via Sourcify, and operational on **Base Main
 
 | Component | Contract Address |
 | --- | --- |
-| **Identity Registry** | [`0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A`](https://www.google.com/search?q=https://basescan.org/address/0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A) |
-| **Asset Registry** | [`0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594`](https://www.google.com/url?sa=E&source=gmail&q=https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594) |
-| **Compliance Engine** | [`0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c`](https://www.google.com/search?q=https://basescan.org/address/0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c) |
-| **NAV Oracle** | [`0xE4BeA2a081BA5d7137618840aFD012883014cbdD`](https://www.google.com/search?q=https://basescan.org/address/0xE4BeA2a081BA5d7137618840aFD012883014cbdD) |
-| **Genesis Token (nUSTB)** | [`0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE`](https://www.google.com/search?q=https://basescan.org/address/0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE) |
-| **Yield Distributor** | [`0x8cbdAC28819d95b8425a0BdFD37610075F021996`](https://www.google.com/search?q=https://basescan.org/address/0x8cbdAC28819d95b8425a0BdFD37610075F021996) |
+| **Identity Registry** | [`0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A`](https://basescan.org/address/0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A) |
+| **Asset Registry** | [`0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594`](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594) |
+| **Compliance Engine** | [`0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c`](https://basescan.org/address/0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c) |
+| **NAV Oracle** | [`0xE4BeA2a081BA5d7137618840aFD012883014cbdD`](https://basescan.org/address/0xE4BeA2a081BA5d7137618840aFD012883014cbdD) |
+| **Genesis Token (nUSTB)** | [`0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE`](https://basescan.org/address/0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE) |
+| **Yield Distributor** | [`0x8cbdAC28819d95b8425a0BdFD37610075F021996`](https://basescan.org/address/0x8cbdAC28819d95b8425a0BdFD37610075F021996) |
 
 ---
-
 
 ## 🛠️ Local Setup & Testing
 
@@ -124,7 +124,7 @@ Built entirely using the [Foundry](https://book.getfoundry.sh/) toolchain.
 
 ```bash
 # Clone the repository
-git clone [https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git](https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git)
+git clone https://github.com/NexTechArchitects/Nexus-RWA-Protocol.git
 cd Nexus-RWA-Protocol
 
 # Install dependencies
@@ -138,9 +138,14 @@ forge test -vvv
 
 # Run stateful invariant fuzzing
 forge test --match-path test/invariant/InvariantProtocol.t.sol
-
 ```
 
-#### Architected & Engineered by [NexTech Architect](https://github.com/NexTechArchitect)
+---
+
+<div align="center">
+
+#### Architected & Engineered by [NexTech Architects](https://github.com/NexTechArchitects)
 
 #### Smart Contract Security · RWA Tokenization · Foundry · Full Stack Web3
+
+</div>
