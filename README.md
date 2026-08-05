@@ -85,6 +85,16 @@ Integrates with Chainlink Data Feeds to provide real-time Net Asset Value (NAV).
 A hyper-efficient, pull-based yield distributor. Uses off-chain Merkle Trees to allocate yield (USDC) to thousands of investors without blowing block gas limits. Cycles are seamlessly advanced via Chainlink Automation.
 
 ---
+## 🛡️ The Nexus Difference: Security by Design
+
+Most traditional RWA protocols rely heavily on centralized multisigs, delayed off-chain API approvals for transfers, and bloated monolithic contracts. **Nexus RWA** introduces a radically different, mathematically verified approach:
+
+* **Stateless Real-Time Compliance:** The `ComplianceEngine` evaluates complex jurisdictional and sanction rules entirely on-chain in `O(1)` time. No off-chain API delays, no centralized approvals required for peer-to-peer secondary trading.
+* **Strictly Decoupled Architecture:** Funds (Yield), ledgers (Assets), and rules (Compliance) are heavily siloed. A logic bug in yield distribution can never compromise the compliance registry or the asset ledger.
+* **Mathematical Certainty:** Instead of relying solely on basic unit testing, the protocol's core constraints (e.g., *Total Supply <= Supply Cap*, *Blocked Investors = Zero Balance*) are mathematically proven against millions of chaotic, randomized state transitions using **Stateful Invariant Fuzzing**.
+* **Zero-Trust Legal Recovery:** Court-ordered asset recoveries (`forcedTransfer`) do not require dangerous proxy upgrades. They are natively built-in, role-gated, and emit immutable cryptographic proofs on-chain.
+
+> 📊 **Full Security Report:** For the comprehensive Slither static analysis, detailed invariant fuzzing sequences, and gas-optimization breakdowns, please refer to the [`/audit`](./audit) directory.
 
 ## 🔒 Security & Testing Model
 
@@ -116,6 +126,7 @@ The core protocol is live, verified via Sourcify, and operational on **Base Main
 | **Yield Distributor** | [`0x8cbdAC28819d95b8425a0BdFD37610075F021996`](https://www.google.com/search?q=https://basescan.org/address/0x8cbdAC28819d95b8425a0BdFD37610075F021996) |
 
 ---
+
 
 ## 🛠️ Local Setup & Testing
 
