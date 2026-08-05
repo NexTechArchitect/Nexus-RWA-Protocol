@@ -99,7 +99,7 @@ Most traditional RWA protocols rely heavily on centralized multisigs, delayed of
 ## 🔒 Security & Testing Model
 
 * **Mathematically Proven Security:** 100% test coverage across 219+ unit/integration tests and stateful invariant fuzzing (5,000+ random sequence calls) verifying non-whitelisted balance, cap breach, and yield double-claim invariants.
-* **Audit & Static Analysis:** Built with strict CEI patterns and verified via Slither (v0.10) with 0 Critical / 0 High vulnerabilities. Complete findings and design trade-offs are documented in [`security-audit.md`](./security-audit.md).
+* **Audit & Static Analysis:** Built with strict CEI patterns and verified via Slither (v0.10) with 0 Critical / 0 High vulnerabilities. Complete findings and design trade-offs are documented in security-report.md
 
 ---
 
