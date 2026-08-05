@@ -98,19 +98,9 @@ Most traditional RWA protocols rely heavily on centralized multisigs, delayed of
 
 ## 🔒 Security & Testing Model
 
-Security is not an afterthought; it is mathematically proven through rigorous invariant testing.
+* **Mathematically Proven Security:** 100% test coverage across 219+ unit/integration tests and stateful invariant fuzzing (5,000+ random sequence calls) verifying non-whitelisted balance, cap breach, and yield double-claim invariants.
+* **Audit & Static Analysis:** Built with strict CEI patterns and verified via Slither (v0.10) with 0 Critical / 0 High vulnerabilities. Complete findings and design trade-offs are documented in [`security-audit.md`](./security-audit.md).
 
-* **100% Test Coverage:** 219/219 passing unit and integration tests.
-* **Stateful Invariant Fuzzing:** Built custom Foundry Handlers performing 5,000+ random sequence calls to mathematically prove:
-* *Invariant 1:* A non-whitelisted address can **never** hold a token balance.
-* *Invariant 2:* Total supply can **never** exceed the registered supply cap.
-* *Invariant 3:* Yield can **never** be double-claimed.
-
-
-* **Strict CEI Pattern:** Every mutative function strictly follows Checks-Effects-Interactions.
-* **Static Analysis:** Audited via Slither (v0.10) with **0 Critical / 0 High** findings. (Remaining informational findings documented as gas optimizations/acceptable design choices).
-
----
 
 ## ✅ Deployed Contracts (Base Mainnet)
 
