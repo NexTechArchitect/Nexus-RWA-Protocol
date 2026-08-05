@@ -94,8 +94,6 @@ Most traditional RWA protocols rely heavily on centralized multisigs, delayed of
 * **Mathematical Certainty:** Instead of relying solely on basic unit testing, the protocol's core constraints (e.g., *Total Supply <= Supply Cap*, *Blocked Investors = Zero Balance*) are mathematically proven against millions of chaotic, randomized state transitions using **Stateful Invariant Fuzzing**.
 * **Zero-Trust Legal Recovery:** Court-ordered asset recoveries (`forcedTransfer`) do not require dangerous proxy upgrades. They are natively built-in, role-gated, and emit immutable cryptographic proofs on-chain.
 
-> 📊 **Full Security Report:** For the comprehensive Slither static analysis, detailed invariant fuzzing sequences, and gas-optimization breakdowns, please refer to the [`/audit`](./audit) directory.
-
 ## 🔒 Security & Testing Model
 
 * **Mathematically Proven Security:** 100% test coverage across 219+ unit/integration tests and stateful invariant fuzzing (5,000+ random sequence calls) verifying non-whitelisted balance, cap breach, and yield double-claim invariants.
