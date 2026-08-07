@@ -68,7 +68,7 @@ library NAVLib {
     //========================================================
 
     /// @notice Validates Chainlink round data — id, startedAt, completeness, staleness.
-    // CHANGED 'calldata' to 'memory' HERE 👇
+   
     function validateStaleness(address feed, RoundData memory data) internal view {
         if(data.roundId == 0 || data.startedAt == 0) revert InvalidRound(data.roundId, data.startedAt);
         if(data.answeredInRound < data.roundId) revert RoundNotComplete(data.roundId, data.answeredInRound);
@@ -86,7 +86,7 @@ library NAVLib {
     }
     
     /// @notice Full Chainlink NAV validation pipeline — round + staleness + price.
-    // CHANGED 'calldata' to 'memory' HERE 👇
+ 
     function validateNAV(
         address feed,
         RoundData memory data,
@@ -108,7 +108,7 @@ library NAVLib {
     //=======================================================
     
     /// @notice Enforces 15% NAV drop guard within 24H window.
-    // CHANGED 'calldata' to 'memory' HERE 👇
+  
     function enforceNAVDropGuard(NAVSnapshot memory snapshot, int256 currentPrice) internal view{
         if(block.timestamp - snapshot.timestamp > NAV_DROP_WINDOW) return;
         if(snapshot.price <=0 || currentPrice <=0) revert ZeroPrice();
@@ -139,7 +139,7 @@ library NAVLib {
     }
     
     /// @notice Checks if a NAV snapshot is expired (outside 24H window).
-    // CHANGED 'calldata' to 'memory' HERE 👇
+    
     function isSnapshotExpired(NAVSnapshot memory snapshot) internal view returns (bool expired){
         expired = block.timestamp - snapshot.timestamp > NAV_DROP_WINDOW;
     }
