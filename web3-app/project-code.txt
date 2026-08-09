@@ -1,0 +1,3827 @@
+==================================================
+FILE: src/experience/ExperienceShell.tsx
+==================================================
+"use client";
+
+import { useScrollProgress } from "../hooks/useScrollProgress";
+import { Overlay } from "../ui/Overlay";
+import { ExperienceCanvas } from "./ExperienceCanvas";
+
+export function ExperienceShell() {
+  const { progress, progressRef, reducedMotion } = useScrollProgress();
+
+  return (
+    <main id="sentinel-content" className="experience-shell">
+      <ExperienceCanvas progressRef={progressRef} reducedMotion={reducedMotion} />
+      <Overlay progress={progress} reducedMotion={reducedMotion} />
+
+      <div className="scroll-rail" aria-hidden="true" />
+
+      <section className="experience-fallback">
+        <p>SentinelShield</p>
+        <h2>Intelligence, before impact.</h2>
+        <span>
+          A continuously responsive security system for financial infrastructure.
+        </span>
+      </section>
+
+      <style jsx global>{`
+        :root {
+          color-scheme: light;
+          background: #f4f8f7;
+        }
+
+        html {
+          min-height: 100%;
+          scroll-behavior: auto;
+          background: #f4f8f7;
+        }
+
+        body {
+          min-width: 320px;
+          min-height: 100%;
+          margin: 0;
+          background: #f4f8f7;
+          color: #173b40;
+          font-family:
+            Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+            sans-serif;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
+        }
+
+        * {
+          box-sizing: border-box;
+        }
+
+        ::selection {
+          color: #ffffff;
+          background: #3a858e;
+        }
+
+        .experience-shell {
+          position: relative;
+          min-height: 100vh;
+          isolation: isolate;
+          overflow: clip;
+          background:
+            radial-gradient(circle at 50% 50%, rgba(178, 231, 231, 0.22), transparent 45%),
+            #f4f8f7;
+        }
+
+        .experience-canvas {
+          position: fixed;
+          z-index: 0;
+          inset: 0;
+          width: 100%;
+          height: 100svh;
+          overflow: hidden;
+        }
+
+        .experience-canvas canvas {
+          display: block;
+          width: 100%;
+          height: 100%;
+          outline: none;
+        }
+
+        .scroll-rail {
+          position: relative;
+          z-index: -1;
+          height: 920vh;
+          pointer-events: none;
+        }
+
+        .experience-fallback {
+          position: absolute;
+          z-index: -2;
+          top: 0;
+          left: 0;
+          display: grid;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .experience-canvas {
+            filter: saturate(0.88);
+          }
+        }
+      `}</style>
+    </main>
+  );
+}
+==================================================
+FILE: src/experience/ExperienceCanvas.tsx
+==================================================
+"use client";
+
+import { useEffect, useRef } from "react";
+import type { MutableRefObject } from "react";
+import * as THREE from "three";
+import { createParticleEngine } from "../particles/ParticleEngine";
+import { createFeatureScene } from "../scenes/FeatureScene";
+import { createFinalScene } from "../scenes/FinalScene";
+import { createHeroScene } from "../scenes/HeroScene";
+import { createEnvironment, type ExperienceFrame, type SceneController } from "../world/Environment";
+
+interface ExperienceCanvasProps {
+  progressRef: MutableRefObject<number>;
+  reducedMotion: boolean;
+}
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+const damp = (current: number, target: number, speed: number, delta: number) =>
+  THREE.MathUtils.lerp(current, target, 1 - Math.exp(-speed * delta));
+
+function createCameraRails() {
+  return {
+    positions: new THREE.CatmullRomCurve3(
+      [
+        new THREE.Vector3(0.2, 0.3, 10.8),
+        new THREE.Vector3(-1.5, 0.8, 8.2),
+        new THREE.Vector3(2.0, 0.32, 5.25),
+        new THREE.Vector3(5.1, 1.15, 6.4),
+        new THREE.Vector3(-2.55, 2.15, 8.5),
+        new THREE.Vector3(0.2, 0.48, 10.9),
+      ],
+      false,
+      "catmullrom",
+      0.42,
+    ),
+    targets: new THREE.CatmullRomCurve3(
+      [
+        new THREE.Vector3(0, 0.08, 0),
+        new THREE.Vector3(0.1, 0.16, -0.15),
+        new THREE.Vector3(0.25, -0.1, 0.15),
+        new THREE.Vector3(0.65, 0.08, -0.4),
+        new THREE.Vector3(-0.2, 0.42, 0.3),
+        new THREE.Vector3(0, 0.02, 0.25),
+      ],
+      false,
+      "catmullrom",
+      0.4,
+    ),
+  };
+}
+
+export function ExperienceCanvas({ progressRef, reducedMotion }: ExperienceCanvasProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const host = hostRef.current;
+
+    if (!host) {
+      return;
+    }
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(39, 1, 0.1, 90);
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: false,
+      powerPreference: "high-performance",
+    });
+
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.8));
+    renderer.setClearColor("#f4f8f7", 1);
+    host.appendChild(renderer.domElement);
+
+    const world = createEnvironment(scene);
+    const particles = createParticleEngine(scene);
+    const controllers: SceneController[] = [
+      createHeroScene(world),
+      createFeatureScene(world),
+      createFinalScene(world),
+    ];
+
+    const rails = createCameraRails();
+    const targetPosition = new THREE.Vector3();
+    const targetLookAt = new THREE.Vector3();
+    const currentLookAt = new THREE.Vector3();
+    const pointer = new THREE.Vector2();
+    const targetPointer = new THREE.Vector2();
+    const clock = new THREE.Clock();
+
+    let animationFrame = 0;
+    let pointerVelocity = 0;
+    let previousPointer = new THREE.Vector2();
+
+    const resize = () => {
+      const bounds = host.getBoundingClientRect();
+      renderer.setSize(Math.max(bounds.width, 1), Math.max(bounds.height, 1), false);
+      camera.aspect = Math.max(bounds.width, 1) / Math.max(bounds.height, 1);
+      camera.fov = bounds.width < 700 ? 46 : 39;
+      camera.updateProjectionMatrix();
+    };
+
+    const move = (event: PointerEvent) => {
+      const bounds = host.getBoundingClientRect();
+      const next = new THREE.Vector2(
+        ((event.clientX - bounds.left) / bounds.width - 0.5) * 2,
+        -((event.clientY - bounds.top) / bounds.height - 0.5) * 2,
+      );
+
+      pointerVelocity = Math.min(next.distanceTo(previousPointer) * 2.4, 1);
+      previousPointer = next;
+      targetPointer.copy(next);
+    };
+
+    const resetPointer = () => targetPointer.set(0, 0);
+
+    const render = () => {
+      const delta = Math.min(clock.getDelta(), 0.05);
+      const time = clock.elapsedTime;
+      const progress = clamp(progressRef.current);
+
+      pointer.lerp(targetPointer, 1 - Math.exp(-delta * 5.6));
+      pointerVelocity = damp(pointerVelocity, 0, 4.5, delta);
+
+      rails.positions.getPointAt(progress, targetPosition);
+      rails.targets.getPointAt(progress, targetLookAt);
+
+      targetPosition.x += pointer.x * 0.17 + (window.innerWidth < 700 ? 0.75 : 0);
+      targetPosition.y += pointer.y * 0.11;
+      targetLookAt.x += pointer.x * 0.13;
+      targetLookAt.y += pointer.y * 0.09;
+
+      camera.position.set(
+        damp(camera.position.x, targetPosition.x, reducedMotion ? 3.2 : 1.95, delta),
+        damp(camera.position.y, targetPosition.y, reducedMotion ? 3.2 : 1.95, delta),
+        damp(camera.position.z, targetPosition.z, reducedMotion ? 3.2 : 1.95, delta),
+      );
+
+      currentLookAt.set(
+        damp(currentLookAt.x, targetLookAt.x, reducedMotion ? 4.8 : 2.8, delta),
+        damp(currentLookAt.y, targetLookAt.y, reducedMotion ? 4.8 : 2.8, delta),
+        damp(currentLookAt.z, targetLookAt.z, reducedMotion ? 4.8 : 2.8, delta),
+      );
+
+      camera.setFocalLength(42 + Math.sin(time * 0.05) * 1.2 + progress * 5);
+      camera.lookAt(currentLookAt);
+
+      const frame: ExperienceFrame = {
+        progress,
+        time: reducedMotion ? time * 0.25 : time,
+        delta,
+        pointer,
+        pointerVelocity,
+      };
+
+      world.update(frame);
+      particles.update(frame);
+      controllers.forEach((controller) => controller.update(frame));
+
+      renderer.render(scene, camera);
+      animationFrame = window.requestAnimationFrame(render);
+    };
+
+    window.addEventListener("resize", resize);
+    host.addEventListener("pointermove", move, { passive: true });
+    host.addEventListener("pointerleave", resetPointer);
+    resize();
+    render();
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", resize);
+      host.removeEventListener("pointermove", move);
+      host.removeEventListener("pointerleave", resetPointer);
+      controllers.forEach((controller) => controller.dispose());
+      particles.dispose();
+      world.dispose();
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, [progressRef, reducedMotion]);
+
+  return <div ref={hostRef} className="experience-canvas" aria-hidden="true" />;
+}
+==================================================
+FILE: src/config/wagmi.ts
+==================================================
+import { getDefaultConfig } from '@rainbow-me/rainbowkit';
+import { base } from 'wagmi/chains';
+import { http, fallback } from 'wagmi';
+
+const BASE_RPC = process.env.NEXT_PUBLIC_BASE_RPC_URL;
+
+export const config = getDefaultConfig({
+  appName: 'Nexus RWA Protocol',
+  projectId: process.env.NEXT_PUBLIC_PROJECT_ID || 'dummy-id-fallback',
+  chains: [base],
+  transports: {
+    [base.id]: fallback([
+      ...(BASE_RPC ? [http(BASE_RPC)] : []),
+      http('https://mainnet.base.org'),
+      http('https://rpc.ankr.com/base'),
+      http('https://1rpc.io/base'),
+      http('https://base.meowrpc.com'),
+    ]),
+  },
+  ssr: true,
+});
+==================================================
+FILE: src/constants/contracts.ts
+==================================================
+import IdentityRegistryABI from './abis/IdentityRegistry.json';
+import NAVOracleABI from './abis/NAVOracle.json';
+import AssetRegistryABI from './abis/AssetRegistry.json';
+import ComplianceEngineABI from './abis/ComplianceEngine.json';
+import RWATokenABI from './abis/RWAToken.json';
+import YieldDistributorABI from './abis/YieldDistributor.json';
+
+export const BASE_CHAIN_ID = 8453;
+
+export const CONTRACT_ADDRESSES = {
+  IDENTITY_REGISTRY: '0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A' as `0x${string}`,
+  NAV_ORACLE: '0xE4BeA2a081BA5d7137618840aFD012883014cbdD' as `0x${string}`,
+  ASSET_REGISTRY: '0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594' as `0x${string}`,
+  COMPLIANCE_ENGINE: '0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c' as `0x${string}`,
+  RWA_TOKEN: '0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE' as `0x${string}`,
+  YIELD_DISTRIBUTOR: '0x8cbdAC28819d95b8425a0BdFD37610075F021996' as `0x${string}`,
+  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913' as `0x${string}`,
+};
+
+export const CONTRACT_ABIS = {
+  IDENTITY_REGISTRY: IdentityRegistryABI,
+  NAV_ORACLE: NAVOracleABI,
+  ASSET_REGISTRY: AssetRegistryABI,
+  COMPLIANCE_ENGINE: ComplianceEngineABI,
+  RWA_TOKEN: RWATokenABI,
+  YIELD_DISTRIBUTOR: YieldDistributorABI,
+};
+==================================================
+FILE: src/app/assets/page.tsx
+==================================================
+
+==================================================
+FILE: src/app/yield/page.tsx
+==================================================
+
+==================================================
+FILE: src/app/identity/page.tsx
+==================================================
+
+==================================================
+FILE: src/app/oracle/page.tsx
+==================================================
+
+==================================================
+FILE: src/app/page.tsx
+==================================================
+"use client";
+
+import React, { useEffect, useRef, useState, useCallback } from "react";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface MousePosition {
+  x: number;
+  y: number;
+  normalizedX: number;
+  normalizedY: number;
+}
+
+interface Contract {
+  label: string;
+  address: string;
+  description: string;
+}
+
+interface FeatureItem {
+  index: string;
+  title: string;
+  body: string;
+  stat: string;
+  statLabel: string;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const CONTRACTS: Contract[] = [
+  {
+    label: "Identity Registry",
+    address: "0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A",
+    description: "ERC-3643 KYC & accreditation hub",
+  },
+  {
+    label: "Asset Registry",
+    address: "0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594",
+    description: "Multi-asset lifecycle ledger",
+  },
+  {
+    label: "Compliance Engine",
+    address: "0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c",
+    description: "Real-time transfer gatekeeper",
+  },
+  {
+    label: "NAV Oracle",
+    address: "0xE4BeA2a081BA5d7137618840aFD012883014cbdD",
+    description: "Chainlink-powered price feed with circuit breaker",
+  },
+  {
+    label: "Genesis Token · nUSTB",
+    address: "0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE",
+    description: "Compliance-enforced ERC-20",
+  },
+  {
+    label: "Yield Distributor",
+    address: "0x8cbdAC28819d95b8425a0BdFD37610075F021996",
+    description: "Merkle-based pull-payment engine",
+  },
+];
+
+const FEATURES: FeatureItem[] = [
+  {
+    index: "01",
+    title: "Embedded Compliance",
+    body: "Every transfer is intercepted and evaluated on-chain in real time. No off-chain API delays. No centralized approvals. KYC, sanctions, and jurisdictional rules execute atomically.",
+    stat: "O(1)",
+    statLabel: "Compliance evaluation",
+  },
+  {
+    index: "02",
+    title: "Legal Clawback",
+    body: "Court-ordered asset recovery without dangerous proxy upgrades. Forced transfers are natively built-in, role-gated, and emit immutable cryptographic proofs on-chain.",
+    stat: "Zero",
+    statLabel: "Proxy upgrades required",
+  },
+  {
+    index: "03",
+    title: "Merkle Yield Claims",
+    body: "Gas-efficient pull-payment distribution using off-chain Merkle trees. Thousands of investors. A single transaction. Chainlink Automation advances every epoch seamlessly.",
+    stat: "219+",
+    statLabel: "Tests · 0 critical findings",
+  },
+  {
+    index: "04",
+    title: "Circuit Breaker NAV",
+    body: "Autonomous 15% NAV drop detection halts all price reads within 24 hours. Staleness guards reject stale Chainlink rounds. Photographic-grade price integrity.",
+    stat: "15%",
+    statLabel: "Auto-pause threshold",
+  },
+];
+
+const TICKER_ITEMS = [
+  "T-BILLS",
+  "REAL ESTATE",
+  "CORPORATE BONDS",
+  "COMMODITIES",
+  "BASE MAINNET",
+  "ERC-3643",
+  "CHAINLINK AUTOMATION",
+  "MERKLE YIELD",
+  "OFAC COMPLIANT",
+  "STATEFUL FUZZING",
+];
+
+// ─── Hooks ───────────────────────────────────────────────────────────────────
+
+function useMousePosition(): MousePosition {
+  const [mouse, setMouse] = useState<MousePosition>({
+    x: 0,
+    y: 0,
+    normalizedX: 0,
+    normalizedY: 0,
+  });
+
+  useEffect(() => {
+    const handleMove = (e: MouseEvent) => {
+      setMouse({
+        x: e.clientX,
+        y: e.clientY,
+        normalizedX: (e.clientX / window.innerWidth) * 2 - 1,
+        normalizedY: -((e.clientY / window.innerHeight) * 2 - 1),
+      });
+    };
+    window.addEventListener("mousemove", handleMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, []);
+
+  return mouse;
+}
+
+function useScrollProgress(): number {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const max =
+        document.documentElement.scrollHeight - window.innerHeight;
+      setProgress(max > 0 ? window.scrollY / max : 0);
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  return progress;
+}
+
+function useIntersection(
+  ref: React.RefObject<Element | null>,
+  threshold = 0.15
+): boolean {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          obs.disconnect();
+        }
+      },
+      { threshold }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [ref, threshold]);
+
+  return visible;
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+/** Animated ticker tape */
+function TickerTape() {
+  const items = [...TICKER_ITEMS, ...TICKER_ITEMS];
+  return (
+    <div className="ticker-container" aria-hidden="true">
+      <div className="ticker-track">
+        {items.map((item, i) => (
+          <span key={i} className="ticker-item">
+            <span className="ticker-dot" />
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Architectural grid lines in the hero */
+function GridLines() {
+  return (
+    <div className="grid-lines" aria-hidden="true">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="grid-line" style={{ "--i": i } as React.CSSProperties} />
+      ))}
+    </div>
+  );
+}
+
+/** Geometric SVG sculpture — the signature element */
+function ArchitecturalSculpture({ mouse }: { mouse: MousePosition }) {
+  const tx = mouse.normalizedX * 12;
+  const ty = -mouse.normalizedY * 8;
+
+  return (
+    <div
+      className="sculpture-container"
+      style={{ transform: `translate(${tx}px, ${ty}px)` }}
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 520 580"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="sculpture-svg"
+      >
+        {/* Outer architectural frame */}
+        <rect
+          x="40"
+          y="60"
+          width="420"
+          height="460"
+          stroke="#2A2A2A"
+          strokeWidth="0.5"
+          className="svg-layer-1"
+        />
+        {/* Inner offset frame */}
+        <rect
+          x="80"
+          y="100"
+          width="340"
+          height="380"
+          stroke="#3A3938"
+          strokeWidth="0.5"
+          className="svg-layer-2"
+        />
+        {/* Central thin vertical line */}
+        <line
+          x1="260"
+          y1="60"
+          x2="260"
+          y2="520"
+          stroke="#C9A96E"
+          strokeWidth="0.5"
+          opacity="0.4"
+          className="svg-center-line"
+        />
+        {/* Horizontal division */}
+        <line
+          x1="40"
+          y1="290"
+          x2="480"
+          y2="290"
+          stroke="#2A2A2A"
+          strokeWidth="0.5"
+          className="svg-h-line"
+        />
+        {/* Diamond accent at center */}
+        <rect
+          x="240"
+          y="270"
+          width="40"
+          height="40"
+          transform="rotate(45 260 290)"
+          stroke="#C9A96E"
+          strokeWidth="0.8"
+          fill="none"
+          className="svg-diamond"
+        />
+        {/* Corner marks */}
+        {[
+          [40, 60], [460, 60], [40, 520], [460, 520],
+        ].map(([cx, cy], i) => (
+          <g key={i}>
+            <circle cx={cx} cy={cy} r="3" fill="#1E1E1E" stroke="#3A3938" strokeWidth="0.5" />
+          </g>
+        ))}
+        {/* Floating horizontal measurement lines */}
+        <line x1="40" y1="180" x2="80" y2="180" stroke="#2A2A2A" strokeWidth="0.5" />
+        <line x1="440" y1="180" x2="480" y2="180" stroke="#2A2A2A" strokeWidth="0.5" />
+        <line x1="40" y1="400" x2="80" y2="400" stroke="#2A2A2A" strokeWidth="0.5" />
+        <line x1="440" y1="400" x2="480" y2="400" stroke="#2A2A2A" strokeWidth="0.5" />
+        {/* Diagonal structural tension lines */}
+        <line
+          x1="80"
+          y1="100"
+          x2="260"
+          y2="290"
+          stroke="#1E1E1C"
+          strokeWidth="0.4"
+          className="svg-diag"
+        />
+        <line
+          x1="420"
+          y1="100"
+          x2="260"
+          y2="290"
+          stroke="#1E1E1C"
+          strokeWidth="0.4"
+          className="svg-diag"
+        />
+        {/* Fine inner rectangle */}
+        <rect
+          x="160"
+          y="200"
+          width="200"
+          height="180"
+          stroke="#252523"
+          strokeWidth="0.4"
+          fill="rgba(30,30,28,0.3)"
+        />
+        {/* Block texture dots */}
+        {[200, 220, 240, 260, 280, 300, 320].map((x) =>
+          [230, 250, 270, 290, 310, 330, 350].map((y) => (
+            <circle
+              key={`${x}-${y}`}
+              cx={x}
+              cy={y}
+              r="0.6"
+              fill="#2A2A28"
+              opacity="0.6"
+            />
+          ))
+        )}
+      </svg>
+    </div>
+  );
+}
+
+/** Single contract address row */
+function ContractRow({ contract, index }: { contract: Contract; index: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const visible = useIntersection(ref as React.RefObject<Element>);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(contract.address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // clipboard not available
+    }
+  }, [contract.address]);
+
+  const short =
+    contract.address.slice(0, 6) + "···" + contract.address.slice(-4);
+
+  return (
+    <div
+      ref={ref}
+      className="contract-row"
+      style={{
+        transitionDelay: `${index * 80}ms`,
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(24px)",
+      }}
+      onClick={handleCopy}
+      role="button"
+      tabIndex={0}
+      aria-label={`Copy ${contract.label} address`}
+      onKeyDown={(e) => e.key === "Enter" && handleCopy()}
+    >
+      <div className="contract-row-left">
+        <span className="contract-index">0{index + 1}</span>
+        <div className="contract-info">
+          <span className="contract-label">{contract.label}</span>
+          <span className="contract-desc">{contract.description}</span>
+        </div>
+      </div>
+      <div className="contract-row-right">
+        <span className="contract-address">{short}</span>
+        <div className={`copy-btn ${copied ? "copied" : ""}`}>
+          {copied ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <polyline points="20 6 9 17 4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Feature card with reveal animation */
+function FeatureCard({ feature, index }: { feature: FeatureItem; index: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const visible = useIntersection(ref as React.RefObject<Element>);
+
+  return (
+    <div
+      ref={ref}
+      className="feature-card"
+      style={{
+        transitionDelay: `${index * 100}ms`,
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(32px)",
+      }}
+    >
+      <div className="feature-card-header">
+        <span className="feature-index">{feature.index}</span>
+        <div className="feature-stat-block">
+          <span className="feature-stat">{feature.stat}</span>
+          <span className="feature-stat-label">{feature.statLabel}</span>
+        </div>
+      </div>
+      <h3 className="feature-title">{feature.title}</h3>
+      <p className="feature-body">{feature.body}</p>
+      <div className="feature-card-line" />
+    </div>
+  );
+}
+
+/** Scroll progress bar */
+function ProgressBar({ progress }: { progress: number }) {
+  return (
+    <div className="progress-bar-track" aria-hidden="true">
+      <div
+        className="progress-bar-fill"
+        style={{ transform: `scaleX(${progress})`, transformOrigin: "left" }}
+      />
+    </div>
+  );
+}
+
+/** Navigation */
+function Nav({ progress }: { progress: number }) {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handler = () => setScrolled(window.scrollY > 60);
+    window.addEventListener("scroll", handler, { passive: true });
+    return () => window.removeEventListener("scroll", handler);
+  }, []);
+
+  return (
+    <nav className={`nav ${scrolled ? "nav-scrolled" : ""}`}>
+      <div className="nav-inner">
+        <a href="#" className="nav-logo" aria-label="Nexus RWA">
+          <span className="nav-logo-mark">N</span>
+          <span className="nav-logo-text">NEXUS RWA</span>
+        </a>
+        <div className="nav-links">
+          <a href="#protocol" className="nav-link">Protocol</a>
+          <a href="#contracts" className="nav-link">Contracts</a>
+          <a
+            href="https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="nav-cta"
+          >
+            View on Basescan
+          </a>
+        </div>
+      </div>
+      <ProgressBar progress={progress} />
+    </nav>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
+export default function Home() {
+  const mouse = useMousePosition();
+  const scrollProgress = useScrollProgress();
+  const heroRef = useRef<HTMLDivElement>(null);
+  const protocolRef = useRef<HTMLElement>(null);
+  const contractsRef = useRef<HTMLElement>(null);
+  const protocolVisible = useIntersection(protocolRef as React.RefObject<Element>, 0.1);
+  const contractsVisible = useIntersection(contractsRef as React.RefObject<Element>, 0.1);
+
+  // Parallax offsets driven by scroll
+  const heroParallax = scrollProgress * -180;
+
+  return (
+    <>
+      {/* ── Global Styles ─────────────────────────────────────────── */}
+      <style jsx global>{`
+        /* ── Reset & base ─────────────────────────── */
+        *, *::before, *::after {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        :root {
+          --black:      #0A0A09;
+          --charcoal:   #141412;
+          --graphite:   #1E1E1C;
+          --stone:      #3A3A38;
+          --mid:        #6B6B69;
+          --muted:      #8A8A88;
+          --fog:        #AEAEAC;
+          --warm-white: #F5F4F0;
+          --off-white:  #E8E7E3;
+          --champagne:  #C9A96E;
+          --champ-dim:  rgba(201,169,110,0.12);
+          --champ-mid:  rgba(201,169,110,0.35);
+          --glass:      rgba(30,30,28,0.72);
+
+          --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+          --ease-in-out: cubic-bezier(0.45, 0, 0.15, 1);
+        }
+
+        html {
+          scroll-behavior: smooth;
+          overflow-x: hidden;
+        }
+
+        body {
+          background: var(--black);
+          color: var(--warm-white);
+          font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          overflow-x: hidden;
+          cursor: default;
+        }
+
+        ::selection {
+          background: var(--champ-mid);
+          color: var(--warm-white);
+        }
+
+        /* ── Scrollbar ─────────────────────────────── */
+        ::-webkit-scrollbar { width: 2px; }
+        ::-webkit-scrollbar-track { background: var(--black); }
+        ::-webkit-scrollbar-thumb { background: var(--stone); border-radius: 1px; }
+
+        /* ── Progress bar ─────────────────────────── */
+        .progress-bar-track {
+          position: absolute;
+          bottom: 0; left: 0; right: 0;
+          height: 1px;
+          background: var(--graphite);
+          overflow: hidden;
+        }
+        .progress-bar-fill {
+          height: 100%;
+          background: var(--champagne);
+          transition: transform 0.1s linear;
+        }
+
+        /* ── Navigation ────────────────────────────── */
+        .nav {
+          position: fixed;
+          top: 0; left: 0; right: 0;
+          z-index: 100;
+          padding: 0 48px;
+          height: 64px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          transition: background 0.4s var(--ease-out),
+                      border-color 0.4s var(--ease-out);
+          border-bottom: 1px solid transparent;
+        }
+        .nav-scrolled {
+          background: rgba(10,10,9,0.9);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-bottom-color: var(--graphite);
+        }
+        .nav-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex: 1;
+        }
+        .nav-logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          text-decoration: none;
+          color: var(--warm-white);
+        }
+        .nav-logo-mark {
+          width: 28px; height: 28px;
+          background: var(--champagne);
+          color: var(--black);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.05em;
+          flex-shrink: 0;
+        }
+        .nav-logo-text {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.22em;
+          color: var(--fog);
+        }
+        .nav-links {
+          display: flex;
+          align-items: center;
+          gap: 40px;
+        }
+        .nav-link {
+          font-size: 11px;
+          font-weight: 500;
+          letter-spacing: 0.14em;
+          color: var(--muted);
+          text-decoration: none;
+          text-transform: uppercase;
+          transition: color 0.25s var(--ease-out);
+        }
+        .nav-link:hover { color: var(--warm-white); }
+        .nav-cta {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.1em;
+          color: var(--black);
+          background: var(--champagne);
+          text-decoration: none;
+          padding: 8px 18px;
+          text-transform: uppercase;
+          transition: opacity 0.25s var(--ease-out);
+        }
+        .nav-cta:hover { opacity: 0.85; }
+
+        /* ── Ticker tape ───────────────────────────── */
+        .ticker-container {
+          width: 100%;
+          overflow: hidden;
+          border-top: 1px solid var(--graphite);
+          border-bottom: 1px solid var(--graphite);
+          padding: 10px 0;
+          background: var(--charcoal);
+        }
+        .ticker-track {
+          display: flex;
+          width: max-content;
+          animation: ticker 40s linear infinite;
+        }
+        .ticker-track:hover { animation-play-state: paused; }
+        .ticker-item {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          padding: 0 40px;
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.22em;
+          color: var(--muted);
+          text-transform: uppercase;
+          white-space: nowrap;
+          transition: color 0.2s;
+        }
+        .ticker-item:hover { color: var(--fog); }
+        .ticker-dot {
+          width: 3px; height: 3px;
+          background: var(--champagne);
+          border-radius: 50%;
+          flex-shrink: 0;
+        }
+        @keyframes ticker {
+          from { transform: translateX(0); }
+          to   { transform: translateX(-50%); }
+        }
+
+        /* ── Grid lines ────────────────────────────── */
+        .grid-lines {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          display: flex;
+          justify-content: space-between;
+          padding: 0 48px;
+          overflow: hidden;
+        }
+        .grid-line {
+          width: 1px;
+          height: 100%;
+          background: linear-gradient(
+            to bottom,
+            transparent 0%,
+            var(--graphite) 20%,
+            var(--graphite) 80%,
+            transparent 100%
+          );
+          opacity: 0.5;
+          transform: scaleY(0);
+          transform-origin: top;
+          animation: lineReveal 1.4s var(--ease-out) forwards;
+          animation-delay: calc(var(--i) * 0.12s + 0.3s);
+        }
+        @keyframes lineReveal {
+          to { transform: scaleY(1); }
+        }
+
+        /* ── Sculpture ─────────────────────────────── */
+        .sculpture-container {
+          position: absolute;
+          top: 50%; right: 6%;
+          transform: translateY(-50%);
+          width: min(480px, 42vw);
+          transition: transform 0.8s var(--ease-out);
+        }
+        .sculpture-svg {
+          width: 100%; height: auto;
+          filter: drop-shadow(0 0 60px rgba(201,169,110,0.04));
+        }
+        .svg-layer-1 { animation: svgFade 1.2s var(--ease-out) 0.2s both; }
+        .svg-layer-2 { animation: svgFade 1.2s var(--ease-out) 0.4s both; }
+        .svg-center-line { animation: svgFade 1.2s var(--ease-out) 0.6s both; }
+        .svg-h-line { animation: svgFade 1.2s var(--ease-out) 0.7s both; }
+        .svg-diamond { animation: svgFade 1.4s var(--ease-out) 0.8s both; }
+        .svg-diag { animation: svgFade 1.2s var(--ease-out) 1.0s both; }
+        @keyframes svgFade {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+
+        /* ── Hero section ──────────────────────────── */
+        .hero {
+          position: relative;
+          min-height: 100vh;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          padding: 0 48px 80px;
+          overflow: hidden;
+        }
+        .hero-bg {
+          position: absolute;
+          inset: 0;
+          background:
+            radial-gradient(ellipse 70% 60% at 75% 50%, rgba(201,169,110,0.03) 0%, transparent 70%),
+            radial-gradient(ellipse 50% 80% at 10% 70%, rgba(30,30,28,0.8) 0%, transparent 60%);
+          pointer-events: none;
+        }
+        .hero-noise {
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+          pointer-events: none;
+          opacity: 0.5;
+        }
+        .hero-content {
+          position: relative;
+          z-index: 2;
+          max-width: 580px;
+        }
+        .hero-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 32px;
+          opacity: 0;
+          transform: translateY(16px);
+          animation: fadeUp 0.9s var(--ease-out) 0.2s forwards;
+        }
+        .hero-eyebrow-line {
+          width: 32px;
+          height: 1px;
+          background: var(--champagne);
+        }
+        .hero-eyebrow-text {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.28em;
+          color: var(--champagne);
+          text-transform: uppercase;
+        }
+        .hero-network-badge {
+          margin-left: auto;
+          font-size: 9px;
+          font-weight: 600;
+          letter-spacing: 0.2em;
+          color: var(--muted);
+          text-transform: uppercase;
+          border: 1px solid var(--stone);
+          padding: 4px 10px;
+        }
+        .hero-headline {
+          font-size: clamp(52px, 7.5vw, 112px);
+          font-weight: 300;
+          line-height: 0.95;
+          letter-spacing: -0.025em;
+          color: var(--warm-white);
+          opacity: 0;
+          transform: translateY(24px);
+          animation: fadeUp 1s var(--ease-out) 0.4s forwards;
+        }
+        .hero-headline em {
+          font-style: normal;
+          font-weight: 700;
+          color: var(--warm-white);
+        }
+        .hero-headline .champ {
+          color: var(--champagne);
+        }
+        .hero-sub {
+          margin-top: 32px;
+          font-size: 15px;
+          font-weight: 400;
+          line-height: 1.65;
+          color: var(--muted);
+          max-width: 420px;
+          opacity: 0;
+          transform: translateY(16px);
+          animation: fadeUp 0.9s var(--ease-out) 0.7s forwards;
+        }
+        .hero-actions {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+          margin-top: 48px;
+          opacity: 0;
+          transform: translateY(16px);
+          animation: fadeUp 0.9s var(--ease-out) 0.9s forwards;
+        }
+        .btn-primary {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          background: var(--warm-white);
+          color: var(--black);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          text-decoration: none;
+          padding: 14px 28px;
+          transition: background 0.25s var(--ease-out), color 0.25s var(--ease-out);
+          border: 1px solid transparent;
+        }
+        .btn-primary:hover {
+          background: var(--champagne);
+          color: var(--black);
+        }
+        .btn-primary svg {
+          transition: transform 0.3s var(--ease-out);
+        }
+        .btn-primary:hover svg { transform: translateX(4px); }
+        .btn-secondary {
+          font-size: 11px;
+          font-weight: 600;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          color: var(--muted);
+          text-decoration: none;
+          transition: color 0.25s var(--ease-out);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+        .btn-secondary::after {
+          content: '';
+          display: inline-block;
+          width: 20px;
+          height: 1px;
+          background: currentColor;
+          transition: width 0.3s var(--ease-out);
+        }
+        .btn-secondary:hover { color: var(--warm-white); }
+        .btn-secondary:hover::after { width: 32px; }
+        .hero-scroll-hint {
+          position: absolute;
+          bottom: 80px; right: 48px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          opacity: 0;
+          animation: fadeUp 0.9s var(--ease-out) 1.2s forwards;
+        }
+        .scroll-hint-line {
+          width: 1px;
+          height: 48px;
+          background: linear-gradient(to bottom, var(--champagne), transparent);
+          animation: scrollLine 2s ease-in-out infinite;
+        }
+        .scroll-hint-text {
+          writing-mode: vertical-rl;
+          font-size: 9px;
+          letter-spacing: 0.22em;
+          color: var(--stone);
+          text-transform: uppercase;
+        }
+        @keyframes scrollLine {
+          0%, 100% { opacity: 0.4; transform: scaleY(0.8); }
+          50%       { opacity: 1;   transform: scaleY(1); }
+        }
+        @keyframes fadeUp {
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ── Stats band ────────────────────────────── */
+        .stats-band {
+          background: var(--charcoal);
+          border-top: 1px solid var(--graphite);
+          border-bottom: 1px solid var(--graphite);
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          padding: 0 48px;
+        }
+        .stat-item {
+          padding: 40px 0;
+          border-right: 1px solid var(--graphite);
+          padding-left: 32px;
+          transition: background 0.3s;
+        }
+        .stat-item:first-child { padding-left: 0; }
+        .stat-item:last-child { border-right: none; }
+        .stat-item:hover { background: rgba(201,169,110,0.03); }
+        .stat-number {
+          font-size: clamp(28px, 3vw, 44px);
+          font-weight: 300;
+          letter-spacing: -0.03em;
+          color: var(--warm-white);
+          display: block;
+        }
+        .stat-number span {
+          color: var(--champagne);
+          font-weight: 700;
+        }
+        .stat-label {
+          display: block;
+          margin-top: 6px;
+          font-size: 10px;
+          letter-spacing: 0.2em;
+          color: var(--muted);
+          text-transform: uppercase;
+          font-weight: 500;
+        }
+
+        /* ── Protocol section ──────────────────────── */
+        .section {
+          padding: 120px 48px;
+        }
+        .section-eyebrow {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          margin-bottom: 56px;
+          transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+        }
+        .section-eyebrow-num {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.2em;
+          color: var(--champagne);
+        }
+        .section-eyebrow-text {
+          font-size: 10px;
+          font-weight: 600;
+          letter-spacing: 0.22em;
+          color: var(--muted);
+          text-transform: uppercase;
+        }
+        .section-title {
+          font-size: clamp(36px, 4.5vw, 72px);
+          font-weight: 300;
+          line-height: 1.05;
+          letter-spacing: -0.02em;
+          color: var(--warm-white);
+          max-width: 820px;
+          transition: opacity 0.9s var(--ease-out), transform 0.9s var(--ease-out);
+        }
+        .section-title strong {
+          font-weight: 700;
+        }
+
+        /* ── Features grid ─────────────────────────── */
+        .features-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 1px;
+          background: var(--graphite);
+          border: 1px solid var(--graphite);
+          margin-top: 72px;
+        }
+        .feature-card {
+          background: var(--charcoal);
+          padding: 48px 40px;
+          transition:
+            opacity 0.7s var(--ease-out),
+            transform 0.7s var(--ease-out),
+            background 0.3s;
+          position: relative;
+        }
+        .feature-card:hover { background: var(--graphite); }
+        .feature-card-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          margin-bottom: 24px;
+        }
+        .feature-index {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.2em;
+          color: var(--stone);
+        }
+        .feature-stat-block {
+          text-align: right;
+        }
+        .feature-stat {
+          display: block;
+          font-size: 24px;
+          font-weight: 700;
+          letter-spacing: -0.02em;
+          color: var(--champagne);
+          line-height: 1;
+        }
+        .feature-stat-label {
+          display: block;
+          margin-top: 3px;
+          font-size: 9px;
+          letter-spacing: 0.15em;
+          color: var(--muted);
+          text-transform: uppercase;
+        }
+        .feature-title {
+          font-size: 22px;
+          font-weight: 600;
+          letter-spacing: -0.01em;
+          color: var(--warm-white);
+          margin-bottom: 16px;
+        }
+        .feature-body {
+          font-size: 14px;
+          line-height: 1.7;
+          color: var(--mid);
+          font-weight: 400;
+        }
+        .feature-card-line {
+          position: absolute;
+          bottom: 0; left: 40px; right: 40px;
+          height: 1px;
+          background: var(--stone);
+          transform: scaleX(0);
+          transform-origin: left;
+          transition: transform 0.5s var(--ease-out);
+        }
+        .feature-card:hover .feature-card-line { transform: scaleX(1); }
+
+        /* ── Architecture diagram ──────────────────── */
+        .arch-section {
+          padding: 120px 48px;
+          background: var(--charcoal);
+          border-top: 1px solid var(--graphite);
+          border-bottom: 1px solid var(--graphite);
+        }
+        .arch-layout {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 80px;
+          margin-top: 72px;
+          align-items: start;
+        }
+        .arch-flow {
+          display: flex;
+          flex-direction: column;
+          gap: 0;
+        }
+        .arch-node {
+          display: flex;
+          align-items: stretch;
+          gap: 24px;
+          opacity: 0;
+          transform: translateX(-20px);
+          transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out);
+        }
+        .arch-node.visible {
+          opacity: 1;
+          transform: translateX(0);
+        }
+        .arch-node-line {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          width: 1px;
+          flex-shrink: 0;
+        }
+        .arch-node-dot {
+          width: 8px; height: 8px;
+          border: 1px solid var(--champagne);
+          background: var(--charcoal);
+          border-radius: 0;
+          flex-shrink: 0;
+          margin-left: -4px;
+        }
+        .arch-node-connector {
+          flex: 1;
+          width: 1px;
+          background: var(--graphite);
+          min-height: 32px;
+        }
+        .arch-node-content {
+          padding-bottom: 32px;
+          flex: 1;
+        }
+        .arch-node-label {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.2em;
+          color: var(--champagne);
+          text-transform: uppercase;
+          margin-bottom: 6px;
+        }
+        .arch-node-name {
+          font-size: 18px;
+          font-weight: 600;
+          color: var(--warm-white);
+          margin-bottom: 8px;
+        }
+        .arch-node-desc {
+          font-size: 13px;
+          line-height: 1.65;
+          color: var(--mid);
+        }
+        .arch-details {
+          padding-left: 24px;
+          border-left: 1px solid var(--graphite);
+        }
+        .arch-details-title {
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.22em;
+          color: var(--muted);
+          text-transform: uppercase;
+          margin-bottom: 32px;
+        }
+        .arch-detail-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          padding: 14px 0;
+          border-bottom: 1px solid var(--graphite);
+          gap: 16px;
+        }
+        .arch-detail-row:first-of-type { border-top: 1px solid var(--graphite); }
+        .arch-detail-key {
+          font-size: 12px;
+          color: var(--muted);
+          font-weight: 500;
+        }
+        .arch-detail-val {
+          font-size: 12px;
+          color: var(--warm-white);
+          font-weight: 600;
+          text-align: right;
+        }
+        .arch-detail-val.green { color: #5FAD6B; }
+        .arch-detail-val.champ { color: var(--champagne); }
+
+        /* ── Contracts section ─────────────────────── */
+        .contracts-section {
+          padding: 120px 48px;
+        }
+        .contracts-intro {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 80px;
+          margin-bottom: 72px;
+          align-items: end;
+        }
+        .contracts-intro-text {
+          font-size: 15px;
+          line-height: 1.7;
+          color: var(--muted);
+          max-width: 400px;
+        }
+        .contracts-live-badge {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          justify-self: end;
+          align-self: end;
+        }
+        .live-dot {
+          width: 6px; height: 6px;
+          background: #5FAD6B;
+          border-radius: 50%;
+          box-shadow: 0 0 0 0 rgba(95,173,107,0.4);
+          animation: livePulse 2s ease-in-out infinite;
+        }
+        @keyframes livePulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(95,173,107,0.4); }
+          50%       { box-shadow: 0 0 0 6px rgba(95,173,107,0); }
+        }
+        .live-text {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.22em;
+          color: #5FAD6B;
+          text-transform: uppercase;
+        }
+        .contracts-list {
+          border-top: 1px solid var(--graphite);
+        }
+        .contract-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 20px 0;
+          border-bottom: 1px solid var(--graphite);
+          cursor: pointer;
+          transition: opacity 0.6s var(--ease-out), transform 0.6s var(--ease-out), background 0.2s;
+          border-radius: 2px;
+        }
+        .contract-row:hover { background: rgba(201,169,110,0.03); }
+        .contract-row-left {
+          display: flex;
+          align-items: center;
+          gap: 24px;
+        }
+        .contract-index {
+          font-size: 10px;
+          font-weight: 700;
+          letter-spacing: 0.15em;
+          color: var(--stone);
+          min-width: 24px;
+        }
+        .contract-info {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .contract-label {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--warm-white);
+          letter-spacing: -0.005em;
+        }
+        .contract-desc {
+          font-size: 11px;
+          color: var(--muted);
+          font-weight: 400;
+          letter-spacing: 0.02em;
+        }
+        .contract-row-right {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .contract-address {
+          font-size: 11px;
+          font-family: "SF Mono", "Fira Code", "Fira Mono", "Roboto Mono", monospace;
+          color: var(--muted);
+          letter-spacing: 0.08em;
+        }
+        .copy-btn {
+          width: 30px; height: 30px;
+          border: 1px solid var(--stone);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--muted);
+          transition: border-color 0.2s, color 0.2s, background 0.2s;
+          flex-shrink: 0;
+        }
+        .copy-btn.copied {
+          border-color: #5FAD6B;
+          color: #5FAD6B;
+          background: rgba(95,173,107,0.06);
+        }
+        .copy-btn:hover {
+          border-color: var(--champagne);
+          color: var(--champagne);
+        }
+
+        /* ── Security section ──────────────────────── */
+        .security-section {
+          padding: 120px 48px;
+          background: var(--charcoal);
+          border-top: 1px solid var(--graphite);
+        }
+        .security-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 1px;
+          background: var(--graphite);
+          border: 1px solid var(--graphite);
+          margin-top: 72px;
+        }
+        .security-item {
+          background: var(--charcoal);
+          padding: 40px 32px;
+          transition: background 0.3s;
+        }
+        .security-item:hover { background: rgba(201,169,110,0.02); }
+        .security-icon {
+          width: 36px; height: 36px;
+          margin-bottom: 20px;
+          color: var(--champagne);
+          opacity: 0.7;
+        }
+        .security-item-title {
+          font-size: 16px;
+          font-weight: 600;
+          color: var(--warm-white);
+          margin-bottom: 12px;
+          letter-spacing: -0.01em;
+        }
+        .security-item-body {
+          font-size: 13px;
+          line-height: 1.65;
+          color: var(--mid);
+        }
+
+        /* ── Footer / CTA section ──────────────────── */
+        .cta-section {
+          padding: 140px 48px;
+          border-top: 1px solid var(--graphite);
+          display: grid;
+          grid-template-columns: 1fr auto;
+          gap: 80px;
+          align-items: end;
+        }
+        .cta-headline {
+          font-size: clamp(40px, 5.5vw, 88px);
+          font-weight: 300;
+          line-height: 0.95;
+          letter-spacing: -0.025em;
+          color: var(--warm-white);
+        }
+        .cta-headline strong { font-weight: 700; color: var(--champagne); }
+        .cta-actions {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          align-items: flex-end;
+        }
+        .cta-note {
+          font-size: 10px;
+          letter-spacing: 0.14em;
+          color: var(--stone);
+          text-transform: uppercase;
+          text-align: right;
+        }
+
+        /* ── Footer ────────────────────────────────── */
+        footer {
+          border-top: 1px solid var(--graphite);
+          padding: 32px 48px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .footer-left {
+          font-size: 10px;
+          letter-spacing: 0.18em;
+          color: var(--stone);
+          text-transform: uppercase;
+        }
+        .footer-right {
+          display: flex;
+          gap: 32px;
+        }
+        .footer-link {
+          font-size: 10px;
+          letter-spacing: 0.14em;
+          color: var(--stone);
+          text-decoration: none;
+          text-transform: uppercase;
+          transition: color 0.2s;
+        }
+        .footer-link:hover { color: var(--fog); }
+
+        /* ── Reveal animation utility ──────────────── */
+        .reveal-up {
+          transition: opacity 0.8s var(--ease-out), transform 0.8s var(--ease-out);
+        }
+
+        /* ── Responsive ────────────────────────────── */
+        @media (max-width: 1024px) {
+          .nav { padding: 0 32px; }
+          .hero { padding: 0 32px 72px; }
+          .sculpture-container { width: 36vw; right: 4%; }
+          .stats-band {
+            grid-template-columns: repeat(2, 1fr);
+            padding: 0 32px;
+          }
+          .stat-item:nth-child(2) { border-right: none; }
+          .stat-item:nth-child(3) { border-right: 1px solid var(--graphite); padding-left: 32px; }
+          .section { padding: 80px 32px; }
+          .features-grid { grid-template-columns: 1fr; }
+          .arch-section { padding: 80px 32px; }
+          .arch-layout { grid-template-columns: 1fr; gap: 48px; }
+          .contracts-section { padding: 80px 32px; }
+          .contracts-intro { grid-template-columns: 1fr; gap: 32px; }
+          .contracts-live-badge { justify-self: start; }
+          .security-section { padding: 80px 32px; }
+          .security-grid { grid-template-columns: 1fr; }
+          .cta-section { padding: 100px 32px; grid-template-columns: 1fr; gap: 48px; }
+          .cta-actions { align-items: flex-start; }
+          .cta-note { text-align: left; }
+          footer { padding: 24px 32px; flex-direction: column; gap: 20px; align-items: flex-start; }
+          .grid-lines { padding: 0 32px; }
+        }
+
+        @media (max-width: 768px) {
+          .nav { padding: 0 20px; }
+          .nav-links { display: none; }
+          .hero { padding: 0 20px 64px; }
+          .sculpture-container { display: none; }
+          .hero-scroll-hint { display: none; }
+          .hero-headline { font-size: clamp(40px, 11vw, 64px); }
+          .stats-band {
+            grid-template-columns: 1fr 1fr;
+            padding: 0 20px;
+          }
+          .stat-item { padding: 28px 0 28px 20px; }
+          .stat-item:first-child { padding-left: 0; }
+          .stat-item:nth-child(2) { border-right: none; }
+          .stat-item:nth-child(3) { border-right: 1px solid var(--graphite); }
+          .section { padding: 64px 20px; }
+          .arch-section { padding: 64px 20px; }
+          .contracts-section { padding: 64px 20px; }
+          .security-section { padding: 64px 20px; }
+          .cta-section { padding: 80px 20px; }
+          footer { padding: 24px 20px; }
+          .grid-lines { padding: 0 20px; }
+          .contract-row-right { display: none; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+      `}</style>
+
+      {/* ── Navigation ──────────────────────────────────────────────── */}
+      <Nav progress={scrollProgress} />
+
+      <main>
+        {/* ── Hero ──────────────────────────────────────────────────── */}
+        <section
+          className="hero"
+          ref={heroRef}
+          style={{ transform: `translateY(${heroParallax * 0.2}px)` }}
+        >
+          <div className="hero-bg" />
+          <div className="hero-noise" />
+          <GridLines />
+
+          {/* Architectural sculpture — signature element */}
+          <ArchitecturalSculpture mouse={mouse} />
+
+          <div className="hero-content">
+            <div className="hero-eyebrow">
+              <div className="hero-eyebrow-line" />
+              <span className="hero-eyebrow-text">Institutional Infrastructure</span>
+              <span className="hero-network-badge">Base Mainnet · Chain 8453</span>
+            </div>
+
+            <h1 className="hero-headline">
+              Real-World<br />
+              Assets,<br />
+              <em className="champ">Redefined.</em>
+            </h1>
+
+            <p className="hero-sub">
+              Institutional-grade tokenization with compliance, identity
+              verification, and automated yield distribution woven directly
+              into the token layer.
+            </p>
+
+            <div className="hero-actions">
+              <a
+                href="https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-primary"
+              >
+                Explore Protocol
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </a>
+              <a href="#protocol" className="btn-secondary">
+                Architecture
+              </a>
+            </div>
+          </div>
+
+          <div className="hero-scroll-hint">
+            <div className="scroll-hint-line" />
+            <span className="scroll-hint-text">Scroll</span>
+          </div>
+        </section>
+
+        {/* ── Ticker ───────────────────────────────────────────────── */}
+        <TickerTape />
+
+        {/* ── Stats band ───────────────────────────────────────────── */}
+        <div className="stats-band">
+          {[
+            { num: "219", sup: "+", label: "Unit & Integration Tests" },
+            { num: "5,000", sup: "+", label: "Stateful Fuzz Calls" },
+            { num: "0", sup: "", label: "Critical Vulnerabilities" },
+            { num: "6", sup: "", label: "Live Contracts · Base" },
+          ].map((s, i) => (
+            <div className="stat-item" key={i}>
+              <span className="stat-number">
+                {s.num}
+                <span>{s.sup}</span>
+              </span>
+              <span className="stat-label">{s.label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Protocol Features ─────────────────────────────────────── */}
+        <section className="section" id="protocol" ref={protocolRef as React.RefObject<HTMLElement>}>
+          <div
+            className="section-eyebrow reveal-up"
+            style={{
+              opacity: protocolVisible ? 1 : 0,
+              transform: protocolVisible ? "translateY(0)" : "translateY(20px)",
+            }}
+          >
+            <span className="section-eyebrow-num">—</span>
+            <span className="section-eyebrow-text">Protocol Design</span>
+          </div>
+          <h2
+            className="section-title reveal-up"
+            style={{
+              opacity: protocolVisible ? 1 : 0,
+              transform: protocolVisible ? "translateY(0)" : "translateY(28px)",
+              transitionDelay: "0.1s",
+            }}
+          >
+            Compliance embedded at the token layer.{" "}
+            <strong>Not bolted on after.</strong>
+          </h2>
+
+          <div className="features-grid">
+            {FEATURES.map((f, i) => (
+              <FeatureCard key={f.index} feature={f} index={i} />
+            ))}
+          </div>
+        </section>
+
+        {/* ── Architecture flow ─────────────────────────────────────── */}
+        <section className="arch-section">
+          <ArchFlowSection />
+        </section>
+
+        {/* ── Deployed Contracts ────────────────────────────────────── */}
+        <section className="contracts-section" id="contracts" ref={contractsRef as React.RefObject<HTMLElement>}>
+          <div
+            className="section-eyebrow reveal-up"
+            style={{
+              opacity: contractsVisible ? 1 : 0,
+              transform: contractsVisible ? "translateY(0)" : "translateY(20px)",
+            }}
+          >
+            <span className="section-eyebrow-num">—</span>
+            <span className="section-eyebrow-text">Deployed Infrastructure</span>
+          </div>
+          <div className="contracts-intro">
+            <div>
+              <h2
+                className="section-title reveal-up"
+                style={{
+                  opacity: contractsVisible ? 1 : 0,
+                  transform: contractsVisible ? "translateY(0)" : "translateY(28px)",
+                  transitionDelay: "0.1s",
+                }}
+              >
+                Live on <strong>Base Mainnet.</strong>
+                <br />Verified via Sourcify.
+              </h2>
+              <p
+                className="contracts-intro-text reveal-up"
+                style={{
+                  opacity: contractsVisible ? 1 : 0,
+                  transform: contractsVisible ? "translateY(0)" : "translateY(20px)",
+                  transitionDelay: "0.2s",
+                  marginTop: "24px",
+                }}
+              >
+                Six interdependent contracts forming a cohesive compliance
+                infrastructure. Each address is click-to-copy.
+              </p>
+            </div>
+            <div className="contracts-live-badge">
+              <div className="live-dot" />
+              <span className="live-text">Operational</span>
+            </div>
+          </div>
+
+          <div className="contracts-list">
+            {CONTRACTS.map((c, i) => (
+              <ContractRow key={c.address} contract={c} index={i} />
+            ))}
+          </div>
+        </section>
+
+        {/* ── Security section ─────────────────────────────────────── */}
+        <SecuritySection />
+
+        {/* ── CTA ──────────────────────────────────────────────────── */}
+        <section className="cta-section">
+          <h2 className="cta-headline">
+            Built for<br />
+            <strong>institutional</strong><br />
+            confidence.
+          </h2>
+          <div className="cta-actions">
+            <a
+              href="https://github.com/NexTechArchitects/Nexus-RWA-Protocol"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-primary"
+            >
+              GitHub Repository
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </a>
+            <p className="cta-note">
+              MIT Licensed · Open Source · Foundry
+            </p>
+          </div>
+        </section>
+      </main>
+
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <footer>
+        <span className="footer-left">
+          © 2024 Nexus RWA Protocol · NexTech Architects
+        </span>
+        <nav className="footer-right">
+          <a
+            href="https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="footer-link"
+          >
+            Basescan
+          </a>
+          <a
+            href="https://github.com/NexTechArchitects/Nexus-RWA-Protocol"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="footer-link"
+          >
+            GitHub
+          </a>
+          <a href="#protocol" className="footer-link">Protocol</a>
+        </nav>
+      </footer>
+    </>
+  );
+}
+
+// ─── Architecture Flow (self-contained with its own intersection) ─────────────
+
+function ArchFlowSection() {
+  const ref = useRef<HTMLDivElement>(null);
+  const visible = useIntersection(ref as React.RefObject<Element>, 0.1);
+
+  const nodes = [
+    {
+      label: "Layer 01",
+      name: "Identity Registry",
+      desc: "ERC-3643 inspired KYC hub. Stores cryptographic commitments to PII. Tracks verification tiers and enforces OFAC sanction checks.",
+    },
+    {
+      label: "Layer 02",
+      name: "Asset Registry",
+      desc: "Manages the lifecycle of multiple RWAs. Defines supply caps, maturity dates, and asset-specific jurisdictional rules.",
+    },
+    {
+      label: "Layer 03",
+      name: "Compliance Engine",
+      desc: "The central rulebook. Hooks into RWAToken to evaluate every transfer in real time. Manages global blacklisting and authorized legal clawbacks.",
+    },
+    {
+      label: "Layer 04",
+      name: "NAV Oracle",
+      desc: "Chainlink-powered net asset value feeds with strict staleness guards and an autonomous 15% circuit breaker.",
+    },
+    {
+      label: "Layer 05",
+      name: "Yield Distributor",
+      desc: "Pull-based Merkle yield distribution advancing epochs automatically via Chainlink Automation. O(1) gas per investor claim.",
+    },
+  ];
+
+  const details = [
+    { key: "Network", val: "Base Mainnet", cls: "" },
+    { key: "Chain ID", val: "8453", cls: "" },
+    { key: "Solidity", val: "^0.8.24 / 0.8.30", cls: "" },
+    { key: "Test Coverage", val: "100%", cls: "green" },
+    { key: "Critical Findings", val: "0", cls: "green" },
+    { key: "Architecture", val: "Decoupled", cls: "champ" },
+    { key: "Chainlink Feeds", val: "Integrated", cls: "champ" },
+    { key: "Fuzzing Calls", val: "5,000+", cls: "" },
+  ];
+
+  return (
+    <div ref={ref}>
+      <div
+        className="section-eyebrow reveal-up"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(20px)",
+        }}
+      >
+        <span className="section-eyebrow-num">—</span>
+        <span className="section-eyebrow-text">System Architecture</span>
+      </div>
+      <h2
+        className="section-title reveal-up"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(28px)",
+          transitionDelay: "0.1s",
+        }}
+      >
+        Five contracts.{" "}
+        <strong>One cohesive compliance layer.</strong>
+      </h2>
+
+      <div className="arch-layout">
+        <div className="arch-flow">
+          {nodes.map((node, i) => (
+            <div
+              key={i}
+              className={`arch-node ${visible ? "visible" : ""}`}
+              style={{ transitionDelay: `${i * 120 + 200}ms` }}
+            >
+              <div className="arch-node-line">
+                <div className="arch-node-dot" />
+                {i < nodes.length - 1 && <div className="arch-node-connector" />}
+              </div>
+              <div className="arch-node-content">
+                <div className="arch-node-label">{node.label}</div>
+                <div className="arch-node-name">{node.name}</div>
+                <div className="arch-node-desc">{node.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div
+          className="arch-details"
+          style={{
+            opacity: visible ? 1 : 0,
+            transform: visible ? "translateY(0)" : "translateY(24px)",
+            transition: "opacity 0.8s var(--ease-out) 0.5s, transform 0.8s var(--ease-out) 0.5s",
+          }}
+        >
+          <p className="arch-details-title">Protocol Specifications</p>
+          {details.map((d) => (
+            <div className="arch-detail-row" key={d.key}>
+              <span className="arch-detail-key">{d.key}</span>
+              <span className={`arch-detail-val ${d.cls}`}>{d.val}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Security Section ─────────────────────────────────────────────────────────
+
+function SecuritySection() {
+  const ref = useRef<HTMLDivElement>(null);
+  const visible = useIntersection(ref as React.RefObject<Element>, 0.1);
+
+  const items = [
+    {
+      title: "Stateful Invariant Fuzzing",
+      body: "Core constraints — supply caps, blocked investor balance, yield double-claims — are mathematically proven against 5,000+ random state transitions.",
+      icon: (
+        <svg className="security-icon" viewBox="0 0 24 24" fill="none">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
+      title: "Strict CEI Patterns",
+      body: "Every state-changing function follows Checks-Effects-Interactions. ReentrancyGuard applied to all value-transferring entry points. No reentrancy vectors.",
+      icon: (
+        <svg className="security-icon" viewBox="0 0 24 24" fill="none">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+    {
+      title: "Zero Critical Findings",
+      body: "Slither v0.10 static analysis completed with zero Critical, zero High severity findings. Complete findings documented in security-report.md.",
+      icon: (
+        <svg className="security-icon" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5" />
+          <polyline points="9 12 11 14 15 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
+  ];
+
+  return (
+    <section className="security-section" ref={ref}>
+      <div
+        className="section-eyebrow reveal-up"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(20px)",
+        }}
+      >
+        <span className="section-eyebrow-num">—</span>
+        <span className="section-eyebrow-text">Security Model</span>
+      </div>
+      <h2
+        className="section-title reveal-up"
+        style={{
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : "translateY(28px)",
+          transitionDelay: "0.1s",
+        }}
+      >
+        Mathematically verified.{" "}
+        <strong>Not just tested.</strong>
+      </h2>
+
+      <div className="security-grid">
+        {items.map((item, i) => (
+          <div
+            key={i}
+            className="security-item"
+            style={{
+              opacity: visible ? 1 : 0,
+              transform: visible ? "translateY(0)" : "translateY(24px)",
+              transition: `opacity 0.7s var(--ease-out) ${i * 120 + 200}ms, transform 0.7s var(--ease-out) ${i * 120 + 200}ms`,
+            }}
+          >
+            {item.icon}
+            <h3 className="security-item-title">{item.title}</h3>
+            <p className="security-item-body">{item.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+==================================================
+FILE: src/app/globals.css
+==================================================
+:root {
+  color-scheme: light;
+  background: #f4f8f7;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: #f4f8f7;
+  scroll-behavior: auto;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+  overflow-x: hidden;
+  color: #173b40;
+  background: #f4f8f7;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  color: #ffffff;
+  background: #3b8991;
+}
+
+.experience-shell {
+  position: relative;
+  min-height: 100vh;
+  isolation: isolate;
+  overflow: clip;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(155, 222, 226, 0.22), transparent 42%),
+    #f4f8f7;
+}
+
+.experience-canvas {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  width: 100%;
+  height: 100svh;
+  overflow: hidden;
+}
+
+.experience-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+}
+
+.scroll-rail {
+  position: relative;
+  z-index: -1;
+  height: 920vh;
+  pointer-events: none;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 30;
+  top: 16px;
+  left: 16px;
+  padding: 10px 14px;
+  color: #163b40;
+  background: #ffffff;
+  font-size: 0.78rem;
+  text-decoration: none;
+  transform: translateY(-180%);
+  transition: transform 180ms ease;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.experience-header,
+.experience-footer,
+.chapter-layer,
+.final-action {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.experience-header {
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 28px clamp(22px, 4vw, 64px);
+  color: #244d52;
+  mix-blend-mode: multiply;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  font-size: 0.82rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  pointer-events: auto;
+  text-decoration: none;
+}
+
+.wordmark-mark {
+  position: relative;
+  width: 13px;
+  height: 13px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+}
+
+.wordmark-mark::after {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+}
+
+.header-index {
+  color: #67858a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.09em;
+}
+
+.chapter-layer {
+  inset: 0;
+}
+
+.chapter {
+  position: absolute;
+  display: grid;
+  width: min(520px, calc(100vw - 48px));
+  gap: 15px;
+  pointer-events: none;
+  transition: opacity 380ms ease, transform 380ms ease;
+  will-change: opacity, transform;
+}
+
+.chapter-left {
+  top: 52%;
+  left: clamp(24px, 9vw, 146px);
+}
+
+.chapter-right {
+  top: 38%;
+  right: clamp(24px, 9vw, 146px);
+}
+
+.chapter-bottom {
+  bottom: clamp(112px, 15vh, 182px);
+  left: clamp(24px, 12vw, 200px);
+}
+
+.chapter p {
+  margin: 0;
+  color: #4b7d84;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chapter h1 {
+  max-width: 11ch;
+  margin: 0;
+  color: #173b40;
+  font-size: clamp(2.55rem, 5.7vw, 6.4rem);
+  font-weight: 520;
+  letter-spacing: -0.07em;
+  line-height: 0.88;
+  text-wrap: balance;
+}
+
+.chapter span {
+  max-width: 37ch;
+  color: #567478;
+  font-size: clamp(0.82rem, 1vw, 0.96rem);
+  line-height: 1.65;
+}
+
+.experience-footer {
+  right: clamp(22px, 4vw, 64px);
+  bottom: 28px;
+  left: clamp(22px, 4vw, 64px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  color: #66868b;
+}
+
+.scroll-cue {
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transition: opacity 250ms ease;
+}
+
+.progress-track {
+  width: min(160px, 21vw);
+  height: 1px;
+  background: rgba(32, 78, 83, 0.2);
+  overflow: hidden;
+}
+
+.progress-track span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #3d8992;
+  transform-origin: left center;
+}
+
+.final-action {
+  right: clamp(22px, 4vw, 64px);
+  bottom: clamp(76px, 12vh, 136px);
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 700ms ease, transform 700ms ease;
+}
+
+.final-action-visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.final-action a {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(31, 80, 86, 0.5);
+  color: #1f5056;
+  font-size: 0.84rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.final-action a span {
+  font-size: 1.1rem;
+  transition: transform 180ms ease;
+}
+
+.final-action a:hover span,
+.final-action a:focus-visible span {
+  transform: translate(3px, -3px);
+}
+
+.screen-reader-copy {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .experience-header {
+    padding: 20px 22px;
+  }
+
+  .chapter-left,
+  .chapter-right,
+  .chapter-bottom {
+    right: 24px;
+    bottom: 24vh;
+    left: 24px;
+  }
+
+  .chapter h1 {
+    font-size: clamp(2.6rem, 13vw, 4.4rem);
+  }
+
+  .experience-footer {
+    right: 22px;
+    bottom: 20px;
+    left: 22px;
+  }
+
+  .final-action {
+    right: 22px;
+    bottom: 64px;
+  }
+}
+==================================================
+FILE: src/app/compliance/page.tsx
+==================================================
+
+==================================================
+FILE: src/app/layout.tsx
+==================================================
+import type { Metadata, Viewport } from "next";
+import "./globals.css";
+
+export const metadata: Metadata = {
+  title: "SentinelShield",
+  description: "Invisible intelligence for financial infrastructure.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f4f8f7",
+  colorScheme: "light",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="en">
+      <body>{children}</body>
+    </html>
+  );
+}
+==================================================
+FILE: src/particles/ParticleEngine.tsx
+==================================================
+import * as THREE from "three";
+import { createParticleMaterial, type ParticleMaterial } from "../shaders/Materials";
+import type { ExperienceFrame } from "../world/Environment";
+
+export interface ParticleEngine {
+  group: THREE.Group;
+  update: (frame: ExperienceFrame) => void;
+  dispose: () => void;
+}
+
+type Layer = {
+  points: THREE.Points<THREE.BufferGeometry, ParticleMaterial>;
+  material: ParticleMaterial;
+  drift: number;
+};
+
+function createLayer(
+  count: number,
+  radius: number,
+  height: number,
+  color: string,
+  scale: number,
+  opacity: number,
+): Layer {
+  const positions = new Float32Array(count * 3);
+  const seeds = new Float32Array(count);
+  const scales = new Float32Array(count);
+
+  for (let index = 0; index < count; index += 1) {
+    const ratio = index / count;
+    const angle = ratio * Math.PI * 27.4 + Math.sin(index * 1.71) * 0.9;
+    const radial = radius * (0.22 + ((index * 37) % 100) / 100);
+
+    positions.set(
+      [
+        Math.cos(angle) * radial + Math.sin(index * 0.31) * 0.3,
+        ((((index * 53) % 100) / 100) - 0.5) * height + Math.cos(angle * 1.3) * 0.38,
+        Math.sin(angle) * radial * 0.72 + Math.sin(index * 0.57) * 0.34,
+      ],
+      index * 3,
+    );
+    seeds[index] = ((index * 71) % 997) / 997;
+    scales[index] = 0.16 + ((index * 29) % 100) / 100;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+  geometry.setAttribute("aScale", new THREE.BufferAttribute(scales, 1));
+
+  const material = createParticleMaterial(color);
+  material.uniforms.uScale.value = scale;
+  material.uniforms.uOpacity.value = opacity;
+
+  return {
+    points: new THREE.Points(geometry, material),
+    material,
+    drift: 0.012 + scale * 0.007,
+  };
+}
+
+export function createParticleEngine(scene: THREE.Scene): ParticleEngine {
+  const group = new THREE.Group();
+  const layers = [
+    createLayer(1150, 7.4, 8.2, "#cceff0", 0.72, 0.28),
+    createLayer(860, 4.8, 5.2, "#a7dfe7", 1.03, 0.4),
+    createLayer(380, 2.85, 3.25, "#dffafa", 1.38, 0.5),
+  ];
+
+  layers.forEach((layer) => group.add(layer.points));
+  scene.add(group);
+
+  return {
+    group,
+
+    update(frame) {
+      const ordered = Math.min(Math.max((frame.progress - 0.35) / 0.38, 0), 1);
+      const calm = Math.min(Math.max((frame.progress - 0.78) / 0.22, 0), 1);
+
+      group.rotation.y = frame.time * 0.014 + frame.pointer.x * 0.065;
+      group.rotation.x = frame.pointer.y * 0.035;
+      group.position.y = Math.sin(frame.time * 0.09) * 0.08;
+      group.scale.setScalar(1 - calm * 0.08);
+
+      layers.forEach((layer, index) => {
+        layer.points.rotation.z = frame.time * layer.drift * (index % 2 === 0 ? 1 : -1);
+        layer.material.uniforms.uTime.value = frame.time + index * 7.3;
+        layer.material.uniforms.uProgress.value = ordered;
+        layer.material.uniforms.uPointer.value.copy(frame.pointer);
+        layer.material.uniforms.uOpacity.value =
+          (index === 0 ? 0.28 : index === 1 ? 0.4 : 0.52) * (0.72 + ordered * 0.34 - calm * 0.12);
+      });
+    },
+
+    dispose() {
+      layers.forEach((layer) => {
+        layer.points.geometry.dispose();
+        layer.material.dispose();
+      });
+      scene.remove(group);
+    },
+  };
+}
+==================================================
+FILE: src/scenes/FeatureScene.tsx
+==================================================
+import * as THREE from "three";
+import { createFilamentMaterial, createParticleMaterial } from "../shaders/Materials";
+import type { ExperienceFrame, ExperienceWorld, SceneController } from "../world/Environment";
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+const smooth = (value: number) => value * value * (3 - 2 * value);
+
+export function createFeatureScene(world: ExperienceWorld): SceneController {
+  const group = new THREE.Group();
+  const lineMaterial = createFilamentMaterial("#78d8e4");
+  const pointMaterial = createParticleMaterial("#e4ffff");
+  const trajectories: THREE.Line[] = [];
+  const packets: THREE.Points[] = [];
+
+  pointMaterial.uniforms.uScale.value = 1.55;
+  pointMaterial.uniforms.uOpacity.value = 0;
+
+  for (let index = 0; index < 17; index += 1) {
+    const phase = (index / 17) * Math.PI * 2;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(Math.cos(phase) * 5.7, Math.sin(phase * 1.9) * 2.6, -2.5),
+      new THREE.Vector3(Math.cos(phase + 0.68) * 2.65, Math.sin(phase + 0.72) * 1.6, -0.45),
+      new THREE.Vector3(Math.cos(phase + 1.35) * 1.1, Math.sin(phase + 1.4) * 0.72, 0.55),
+      new THREE.Vector3(Math.cos(phase + 2.36) * 5.9, Math.sin(phase + 2.1) * 2.7, 2.65),
+    ]);
+
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(curve.getPoints(132)),
+      lineMaterial,
+    );
+    group.add(line);
+    trajectories.push(line);
+
+    const packetCount = 5;
+    const positions = new Float32Array(packetCount * 3);
+    const seeds = new Float32Array(packetCount);
+    const scales = new Float32Array(packetCount);
+
+    for (let pointIndex = 0; pointIndex < packetCount; pointIndex += 1) {
+      const point = curve.getPointAt((pointIndex + 0.5) / packetCount);
+      positions.set([point.x, point.y, point.z], pointIndex * 3);
+      seeds[pointIndex] = (index * 17 + pointIndex * 31) / 331;
+      scales[pointIndex] = 0.5 + pointIndex * 0.1;
+    }
+
+    const packetGeometry = new THREE.BufferGeometry();
+    packetGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    packetGeometry.setAttribute("aSeed", new THREE.BufferAttribute(seeds, 1));
+    packetGeometry.setAttribute("aScale", new THREE.BufferAttribute(scales, 1));
+
+    const packet = new THREE.Points(packetGeometry, pointMaterial);
+    group.add(packet);
+    packets.push(packet);
+  }
+
+  group.rotation.x = -0.05;
+  world.root.add(group);
+
+  return {
+    update(frame: ExperienceFrame) {
+      const entrance = smooth(clamp((frame.progress - 0.3) / 0.18));
+      const exit = smooth(clamp((frame.progress - 0.73) / 0.22));
+      const presence = entrance * (1 - exit);
+
+      group.visible = presence > 0.004;
+      group.rotation.y = frame.time * 0.024 + frame.progress * 0.55;
+      group.rotation.z = Math.sin(frame.time * 0.1) * 0.025;
+      group.scale.setScalar(0.82 + presence * 0.27);
+
+      lineMaterial.uniforms.uTime.value = frame.time;
+      lineMaterial.uniforms.uOpacity.value = presence * 0.3;
+      pointMaterial.uniforms.uTime.value = frame.time;
+      pointMaterial.uniforms.uProgress.value = entrance;
+      pointMaterial.uniforms.uPointer.value.copy(frame.pointer);
+      pointMaterial.uniforms.uOpacity.value = presence * 0.82;
+
+      trajectories.forEach((trajectory, index) => {
+        trajectory.rotation.x = Math.sin(frame.time * 0.08 + index * 0.37) * 0.1;
+        trajectory.rotation.y = Math.cos(frame.time * 0.06 + index * 0.51) * 0.1;
+      });
+
+      packets.forEach((packet, index) => {
+        packet.rotation.y = frame.time * (0.025 + index * 0.001);
+      });
+    },
+
+    dispose() {
+      trajectories.forEach((trajectory) => trajectory.geometry.dispose());
+      packets.forEach((packet) => packet.geometry.dispose());
+      lineMaterial.dispose();
+      pointMaterial.dispose();
+      world.root.remove(group);
+    },
+  };
+}
+==================================================
+FILE: src/scenes/HeroScene.tsx
+==================================================
+import * as THREE from "three";
+import { createFilamentMaterial, type FilamentMaterial } from "../shaders/Materials";
+import type { ExperienceFrame, ExperienceWorld, SceneController } from "../world/Environment";
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+
+export function createHeroScene(world: ExperienceWorld): SceneController {
+  const group = new THREE.Group();
+  const material = createFilamentMaterial("#d8f9fa");
+  const filaments: THREE.Line[] = [];
+
+  for (let index = 0; index < 9; index += 1) {
+    const angle = (index / 9) * Math.PI * 2;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(Math.cos(angle) * 7.8, Math.sin(angle * 1.7) * 2.5, -3.8),
+      new THREE.Vector3(Math.cos(angle + 0.42) * 4.1, Math.sin(angle + 0.8) * 1.35, -1.4),
+      new THREE.Vector3(Math.cos(angle + 1.1) * 2.4, Math.sin(angle + 1.4) * 0.8, 0.35),
+      new THREE.Vector3(Math.cos(angle + 2.15) * 5.9, Math.sin(angle + 1.9) * 2.4, 3.4),
+    ]);
+
+    const filament = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(curve.getPoints(120)),
+      material,
+    );
+    filament.rotation.y = angle * 0.16;
+    group.add(filament);
+    filaments.push(filament);
+  }
+
+  group.position.z = -1.6;
+  world.root.add(group);
+
+  return {
+    update(frame: ExperienceFrame) {
+      const presence = 1 - clamp((frame.progress - 0.36) / 0.22);
+      group.visible = presence > 0.004;
+      group.rotation.y = -frame.time * 0.022;
+      group.rotation.z = Math.sin(frame.time * 0.08) * 0.04;
+      group.position.y = Math.sin(frame.time * 0.1) * 0.13;
+
+      material.uniforms.uTime.value = frame.time;
+      material.uniforms.uOpacity.value = 0.09 + presence * 0.2;
+
+      filaments.forEach((filament, index) => {
+        filament.rotation.x = Math.sin(frame.time * 0.06 + index) * 0.16;
+        filament.scale.setScalar(0.84 + presence * 0.2 + Math.sin(frame.time * 0.1 + index) * 0.015);
+      });
+    },
+
+    dispose() {
+      filaments.forEach((filament) => filament.geometry.dispose());
+      material.dispose();
+      world.root.remove(group);
+    },
+  };
+}
+==================================================
+FILE: src/scenes/FinalScene.tsx
+==================================================
+import * as THREE from "three";
+import { createAegisMaterial } from "../shaders/Materials";
+import {
+  createRibbonGeometry,
+  type ExperienceFrame,
+  type ExperienceWorld,
+  type SceneController,
+} from "../world/Environment";
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+const smooth = (value: number) => value * value * (3 - 2 * value);
+
+export function createFinalScene(world: ExperienceWorld): SceneController {
+  const group = new THREE.Group();
+  const material = createAegisMaterial("#ecf7f6", "#8edce4");
+  const structures: THREE.Mesh[] = [];
+
+  for (let index = 0; index < 12; index += 1) {
+    const phase = (index / 12) * Math.PI * 2;
+    const structure = new THREE.Mesh(
+      createRibbonGeometry(2.5 + (index % 4) * 0.23, 2.7 + (index % 3) * 0.36, phase, 0.62, 60),
+      material,
+    );
+
+    structure.rotation.set(
+      Math.sin(index * 1.27) * 0.18,
+      phase * 0.54,
+      Math.cos(index * 0.81) * 0.12,
+    );
+    group.add(structure);
+    structures.push(structure);
+  }
+
+  group.position.z = 0.8;
+  world.root.add(group);
+
+  return {
+    update(frame: ExperienceFrame) {
+      const presence = smooth(clamp((frame.progress - 0.72) / 0.24));
+      group.visible = presence > 0.004;
+      group.rotation.y = -frame.time * 0.016 + presence * 0.13;
+      group.rotation.z = Math.sin(frame.time * 0.055) * 0.024;
+      group.position.y = -0.14 - presence * 0.22;
+      group.scale.setScalar(0.75 + presence * 0.23);
+
+      material.uniforms.uTime.value = frame.time * 0.55;
+      material.uniforms.uProgress.value = frame.progress;
+      material.uniforms.uEnergy.value = 0.06 + presence * 0.12;
+
+      structures.forEach((structure, index) => {
+        structure.rotation.x = Math.sin(frame.time * 0.045 + index * 0.73) * 0.11 - presence * 0.075;
+      });
+    },
+
+    dispose() {
+      structures.forEach((structure) => structure.geometry.dispose());
+      material.dispose();
+      world.root.remove(group);
+    },
+  };
+}
+==================================================
+FILE: src/hooks/useScrollProgress.ts
+==================================================
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+export interface ScrollProgressState {
+  progress: number;
+  progressRef: React.MutableRefObject<number>;
+  reducedMotion: boolean;
+}
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+
+export function useScrollProgress(): ScrollProgressState {
+  const progressRef = useRef(0);
+  const [progress, setProgress] = useState(0);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let animationFrame = 0;
+
+    const updateProgress = () => {
+      const maximumScroll = Math.max(
+        document.documentElement.scrollHeight - window.innerHeight,
+        1,
+      );
+      const nextProgress = clamp(window.scrollY / maximumScroll);
+
+      progressRef.current = nextProgress;
+      setProgress((currentProgress) =>
+        Math.abs(currentProgress - nextProgress) > 0.0005
+          ? nextProgress
+          : currentProgress,
+      );
+    };
+
+    const requestUpdate = () => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(updateProgress);
+    };
+
+    const updateMotionPreference = () => {
+      setReducedMotion(motionQuery.matches);
+    };
+
+    updateMotionPreference();
+    updateProgress();
+
+    window.addEventListener("scroll", requestUpdate, { passive: true });
+    window.addEventListener("resize", requestUpdate, { passive: true });
+    motionQuery.addEventListener("change", updateMotionPreference);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("scroll", requestUpdate);
+      window.removeEventListener("resize", requestUpdate);
+      motionQuery.removeEventListener("change", updateMotionPreference);
+    };
+  }, []);
+
+  return { progress, progressRef, reducedMotion };
+}
+==================================================
+FILE: src/ui/Overlay.tsx
+==================================================
+"use client";
+
+interface OverlayProps {
+  progress: number;
+  reducedMotion: boolean;
+}
+
+type Chapter = {
+  start: number;
+  end: number;
+  eyebrow: string;
+  title: string;
+  body: string;
+  position: "left" | "right" | "bottom";
+};
+
+const chapters: Chapter[] = [
+  {
+    start: 0.02,
+    end: 0.24,
+    eyebrow: "An invisible threshold",
+    title: "Before impact, there is intelligence.",
+    body: "SentinelShield observes the conditions that matter before they become visible.",
+    position: "left",
+  },
+  {
+    start: 0.22,
+    end: 0.42,
+    eyebrow: "A system takes form",
+    title: "Precision is felt before it is explained.",
+    body: "Every layer resolves into a living field of engineered awareness.",
+    position: "right",
+  },
+  {
+    start: 0.4,
+    end: 0.62,
+    eyebrow: "SentinelShield",
+    title: "Intelligence, before impact.",
+    body: "Infrastructure that detects, interprets, and routes complexity with composure.",
+    position: "left",
+  },
+  {
+    start: 0.59,
+    end: 0.78,
+    eyebrow: "Trust in motion",
+    title: "Disorder enters. The system stays calm.",
+    body: "Protection is not a wall. It is a continuous act of exact alignment.",
+    position: "right",
+  },
+  {
+    start: 0.75,
+    end: 0.96,
+    eyebrow: "The open continuum",
+    title: "Security that keeps the world moving.",
+    body: "Built for a financial future that can move with confidence.",
+    position: "bottom",
+  },
+];
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+
+function chapterOpacity(progress: number, chapter: Chapter) {
+  const entrance = clamp((progress - chapter.start) / 0.06);
+  const exit = 1 - clamp((progress - (chapter.end - 0.07)) / 0.07);
+  return Math.min(entrance * entrance * (3 - 2 * entrance), exit * exit * (3 - 2 * exit));
+}
+
+export function Overlay({ progress, reducedMotion }: OverlayProps) {
+  const activeChapter =
+    chapters.find((chapter) => progress >= chapter.start && progress <= chapter.end) ??
+    chapters[chapters.length - 1];
+  const showAction = progress > 0.88;
+
+  return (
+    <>
+      <a className="skip-link" href="#sentinel-content">
+        Skip visual experience
+      </a>
+
+      <header className="experience-header" aria-label="SentinelShield">
+        <a className="wordmark" href="#sentinel-content" aria-label="SentinelShield home">
+          <span className="wordmark-mark" />
+          <span>SentinelShield</span>
+        </a>
+        <span className="header-index" aria-hidden="true">
+          {String(Math.min(Math.floor(progress * 10) + 1, 10)).padStart(2, "0")}
+        </span>
+      </header>
+
+      <div className="chapter-layer" aria-hidden="true">
+        {chapters.map((chapter) => {
+          const opacity = chapterOpacity(progress, chapter);
+          const translate = reducedMotion ? 0 : (1 - opacity) * 18;
+
+          return (
+            <section
+              key={chapter.title}
+              className={`chapter chapter-${chapter.position}`}
+              style={{
+                opacity,
+                transform: `translate3d(0, ${translate}px, 0)`,
+              }}
+            >
+              <p>{chapter.eyebrow}</p>
+              <h1>{chapter.title}</h1>
+              <span>{chapter.body}</span>
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="screen-reader-copy" aria-live="polite">
+        <p>{activeChapter.eyebrow}</p>
+        <h1>{activeChapter.title}</h1>
+        <p>{activeChapter.body}</p>
+      </div>
+
+      <footer className="experience-footer">
+        <span className="scroll-cue" style={{ opacity: Math.max(0, 1 - progress * 5) }}>
+          Scroll to enter
+        </span>
+        <div className="progress-track" aria-hidden="true">
+          <span style={{ transform: `scaleX(${Math.max(progress, 0.015)})` }} />
+        </div>
+      </footer>
+
+      <div className={`final-action${showAction ? " final-action-visible" : ""}`}>
+        <a href="mailto:hello@sentinelshield.com?subject=SentinelShield%20conversation">
+          Begin a conversation
+          <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+
+      <style jsx>{`
+        .skip-link {
+          position: fixed;
+          z-index: 30;
+          top: 16px;
+          left: 16px;
+          padding: 10px 14px;
+          color: #14353a;
+          background: #ffffff;
+          font-size: 0.8rem;
+          text-decoration: none;
+          transform: translateY(-160%);
+          transition: transform 180ms ease;
+        }
+
+        .skip-link:focus {
+          transform: translateY(0);
+        }
+
+        .experience-header,
+        .experience-footer,
+        .chapter-layer,
+        .final-action {
+          position: fixed;
+          z-index: 10;
+          pointer-events: none;
+        }
+
+        .experience-header {
+          top: 0;
+          right: 0;
+          left: 0;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 28px clamp(22px, 4vw, 64px);
+          mix-blend-mode: multiply;
+        }
+
+        .wordmark {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          color: #244b50;
+          font-size: 0.82rem;
+          font-weight: 650;
+          letter-spacing: -0.02em;
+          pointer-events: auto;
+          text-decoration: none;
+        }
+
+        .wordmark-mark {
+          position: relative;
+          width: 13px;
+          height: 13px;
+          border: 1px solid currentColor;
+          border-radius: 50%;
+        }
+
+        .wordmark-mark::after {
+          position: absolute;
+          inset: 3px;
+          border-radius: 50%;
+          background: currentColor;
+          content: "";
+        }
+
+        .header-index {
+          color: #5c7b80;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 0.67rem;
+          letter-spacing: 0.08em;
+        }
+
+        .chapter-layer {
+          inset: 0;
+        }
+
+        .chapter {
+          position: absolute;
+          display: grid;
+          width: min(510px, calc(100vw - 48px));
+          gap: 15px;
+          transition: opacity 450ms ease;
+          will-change: opacity, transform;
+        }
+
+        .chapter-left {
+          top: 52%;
+          left: clamp(24px, 9vw, 146px);
+          transform: translateY(-50%);
+        }
+
+        .chapter-right {
+          top: 38%;
+          right: clamp(24px, 9vw, 146px);
+          transform: translateY(-50%);
+        }
+
+        .chapter-bottom {
+          bottom: clamp(112px, 15vh, 180px);
+          left: clamp(24px, 12vw, 200px);
+        }
+
+        .chapter p {
+          margin: 0;
+          color: #4c7d84;
+          font-size: 0.66rem;
+          font-weight: 700;
+          letter-spacing: 0.11em;
+          text-transform: uppercase;
+        }
+
+        .chapter h1 {
+          max-width: 11ch;
+          margin: 0;
+          color: #173b40;
+          font-size: clamp(2.55rem, 5.7vw, 6.4rem);
+          font-weight: 520;
+          letter-spacing: -0.068em;
+          line-height: 0.88;
+          text-wrap: balance;
+        }
+
+        .chapter span {
+          max-width: 36ch;
+          color: #547176;
+          font-size: clamp(0.82rem, 1vw, 0.96rem);
+          line-height: 1.65;
+        }
+
+        .screen-reader-copy {
+          position: fixed;
+          width: 1px;
+          height: 1px;
+          overflow: hidden;
+          clip: rect(0 0 0 0);
+          white-space: nowrap;
+        }
+
+        .experience-footer {
+          right: clamp(22px, 4vw, 64px);
+          bottom: 28px;
+          left: clamp(22px, 4vw, 64px);
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 20px;
+          color: #66848a;
+        }
+
+        .scroll-cue {
+          font-size: 0.68rem;
+          letter-spacing: 0.09em;
+          text-transform: uppercase;
+          transition: opacity 250ms ease;
+        }
+
+        .progress-track {
+          width: min(160px, 20vw);
+          height: 1px;
+          background: rgba(33, 79, 84, 0.2);
+          overflow: hidden;
+        }
+
+        .progress-track span {
+          display: block;
+          width: 100%;
+          height: 100%;
+          background: #3d8b94;
+          transform-origin: left center;
+        }
+
+        .final-action {
+          right: clamp(22px, 4vw, 64px);
+          bottom: clamp(76px, 12vh, 136px);
+          opacity: 0;
+          transform: translateY(10px);
+          transition: opacity 700ms ease, transform 700ms ease;
+        }
+
+        .final-action-visible {
+          opacity: 1;
+          transform: translateY(0);
+          pointer-events: auto;
+        }
+
+        .final-action a {
+          display: inline-flex;
+          align-items: center;
+          gap: 14px;
+          padding: 13px 0;
+          border-bottom: 1px solid rgba(31, 80, 86, 0.48);
+          color: #1f5056;
+          font-size: 0.84rem;
+          font-weight: 650;
+          text-decoration: none;
+        }
+
+        .final-action span {
+          font-size: 1.15rem;
+          transition: transform 180ms ease;
+        }
+
+        .final-action a:hover span,
+        .final-action a:focus-visible span {
+          transform: translate(3px, -3px);
+        }
+
+        @media (max-width: 700px) {
+          .experience-header {
+            padding: 20px 22px;
+          }
+
+          .chapter-left,
+          .chapter-right {
+            top: auto;
+            right: 24px;
+            bottom: 26vh;
+            left: 24px;
+            transform: none;
+          }
+
+          .chapter-bottom {
+            right: 24px;
+            bottom: 22vh;
+            left: 24px;
+          }
+
+          .chapter h1 {
+            font-size: clamp(2.6rem, 13vw, 4.4rem);
+          }
+
+          .chapter span {
+            max-width: 33ch;
+          }
+
+          .experience-footer {
+            right: 22px;
+            bottom: 20px;
+            left: 22px;
+          }
+
+          .final-action {
+            right: 22px;
+            bottom: 66px;
+          }
+        }
+      `}</style>
+    </>
+  );
+}
+==================================================
+FILE: src/providers/Web3Provider.tsx
+==================================================
+"use client";
+
+import React, { useState } from "react";
+import { WagmiProvider } from "wagmi";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { RainbowKitProvider, darkTheme } from "@rainbow-me/rainbowkit";
+import { config } from "@/config/wagmi";
+
+import "@rainbow-me/rainbowkit/styles.css";
+
+export function Web3Provider({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient());
+
+  return (
+    <WagmiProvider config={config}>
+      <QueryClientProvider client={queryClient}>
+        <RainbowKitProvider theme={darkTheme()}>
+          {children}
+        </RainbowKitProvider>
+      </QueryClientProvider>
+    </WagmiProvider>
+  );
+}
+
+==================================================
+FILE: src/world/Environment.tsx
+==================================================
+import * as THREE from "three";
+import {
+  createAegisMaterial,
+  createFilamentMaterial,
+  type AegisMaterial,
+  type FilamentMaterial,
+} from "../shaders/Materials";
+
+export interface ExperienceFrame {
+  progress: number;
+  time: number;
+  delta: number;
+  pointer: THREE.Vector2;
+  pointerVelocity: number;
+}
+
+export interface SceneController {
+  update: (frame: ExperienceFrame) => void;
+  dispose: () => void;
+}
+
+export interface ExperienceWorld {
+  root: THREE.Group;
+  field: THREE.Group;
+  materials: {
+    aegis: AegisMaterial;
+    filaments: FilamentMaterial;
+  };
+  update: (frame: ExperienceFrame) => void;
+  dispose: () => void;
+}
+
+type Lamella = {
+  mesh: THREE.Mesh<THREE.BufferGeometry, AegisMaterial>;
+  phase: number;
+  height: number;
+};
+
+const clamp = (value: number) => Math.min(Math.max(value, 0), 1);
+const smooth = (value: number) => value * value * (3 - 2 * value);
+
+export function createRibbonGeometry(
+  radius: number,
+  height: number,
+  phase: number,
+  turns = 1.25,
+  segments = 92,
+): THREE.BufferGeometry {
+  const vertices: number[] = [];
+  const phases: number[] = [];
+  const lifts: number[] = [];
+  const indices: number[] = [];
+
+  for (let index = 0; index <= segments; index += 1) {
+    const progress = index / segments;
+    const angle = phase + progress * Math.PI * 2 * turns;
+    const undulation =
+      Math.sin(progress * Math.PI * 2 + phase * 1.7) * 0.24 +
+      Math.sin(progress * Math.PI * 5.2 + phase * 0.63) * 0.08;
+    const center = new THREE.Vector3(
+      Math.cos(angle) * (radius + undulation),
+      (progress - 0.5) * height + Math.sin(angle * 1.35) * 0.34,
+      Math.sin(angle) * (radius + undulation) * 0.74,
+    );
+    const outward = new THREE.Vector3(Math.cos(angle), 0.12, Math.sin(angle) * 0.74).normalize();
+    const width = 0.09 + Math.sin(progress * Math.PI) * 0.075;
+    const left = center.clone().addScaledVector(outward, -width);
+    const right = center.clone().addScaledVector(outward, width);
+
+    vertices.push(left.x, left.y, left.z, right.x, right.y, right.z);
+    phases.push(phase / (Math.PI * 2), phase / (Math.PI * 2));
+    lifts.push(progress, progress);
+
+    if (index < segments) {
+      const offset = index * 2;
+      indices.push(offset, offset + 1, offset + 2, offset + 1, offset + 3, offset + 2);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
+  geometry.setAttribute("aLift", new THREE.Float32BufferAttribute(lifts, 1));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createField(material: AegisMaterial) {
+  const group = new THREE.Group();
+  const lamellae: Lamella[] = [];
+
+  for (let index = 0; index < 31; index += 1) {
+    const phase = (index / 31) * Math.PI * 2 + Math.sin(index * 1.73) * 0.17;
+    const height = 2.1 + (index % 6) * 0.39;
+    const mesh = new THREE.Mesh(
+      createRibbonGeometry(1.4 + (index % 8) * 0.19, height, phase),
+      material,
+    );
+
+    mesh.rotation.set(
+      Math.sin(index * 0.91) * 0.46,
+      Math.cos(index * 0.57) * 0.44,
+      Math.sin(index * 0.37) * 0.3,
+    );
+
+    group.add(mesh);
+    lamellae.push({ mesh, phase, height });
+  }
+
+  return { group, lamellae };
+}
+
+function createFilamentField(material: FilamentMaterial) {
+  const group = new THREE.Group();
+
+  for (let index = 0; index < 16; index += 1) {
+    const phase = (index / 16) * Math.PI * 2;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(Math.cos(phase) * 4.4, Math.sin(phase * 1.8) * 1.9, -2.1),
+      new THREE.Vector3(Math.cos(phase + 0.76) * 2.4, Math.sin(phase + 0.4) * 1.15, -0.55),
+      new THREE.Vector3(Math.cos(phase + 1.4) * 1.2, Math.sin(phase + 1.2) * 0.85, 0.7),
+      new THREE.Vector3(Math.cos(phase + 2.16) * 4.8, Math.sin(phase + 1.8) * 2.1, 2.15),
+    ]);
+
+    group.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(curve.getPoints(100)),
+        material,
+      ),
+    );
+  }
+
+  return group;
+}
+
+export function createEnvironment(scene: THREE.Scene): ExperienceWorld {
+  scene.background = new THREE.Color("#edf3f2");
+  scene.fog = new THREE.FogExp2("#edf5f4", 0.036);
+
+  const root = new THREE.Group();
+  const materials = {
+    aegis: createAegisMaterial(),
+    filaments: createFilamentMaterial(),
+  };
+  const { group: field, lamellae } = createField(materials.aegis);
+
+  root.add(field, createFilamentField(materials.filaments));
+  scene.add(root);
+
+  const hemisphere = new THREE.HemisphereLight("#f9ffff", "#abc6ce", 2.15);
+  const key = new THREE.DirectionalLight("#eaffff", 2.2);
+  const rim = new THREE.PointLight("#9ce8f2", 14, 18, 2);
+  const depth = new THREE.PointLight("#d6e2ff", 7, 20, 2);
+
+  key.position.set(-4.8, 6.6, 4.2);
+  rim.position.set(4.2, 0.8, 4.4);
+  depth.position.set(-2.8, -3.8, -5.2);
+  scene.add(hemisphere, key, rim, depth);
+
+  const update = (frame: ExperienceFrame) => {
+    const entrance = smooth(clamp((frame.progress - 0.06) / 0.22));
+    const intelligence = smooth(clamp((frame.progress - 0.34) / 0.3));
+    const resolve = smooth(clamp((frame.progress - 0.61) / 0.23));
+    const finality = smooth(clamp((frame.progress - 0.8) / 0.2));
+
+    root.rotation.y = frame.time * 0.026 + frame.pointer.x * 0.075;
+    root.rotation.x = Math.sin(frame.time * 0.07) * 0.035 - frame.pointer.y * 0.035;
+    root.position.y = Math.sin(frame.time * 0.12) * 0.11 - finality * 0.24;
+    root.scale.setScalar(0.74 + entrance * 0.26 + intelligence * 0.05);
+
+    field.rotation.y = -frame.time * 0.038 + intelligence * 0.22;
+    field.rotation.z = Math.sin(frame.time * 0.09) * 0.045 - finality * 0.055;
+    field.position.z = -0.65 + entrance * 0.5 + finality * 0.68;
+
+    lamellae.forEach(({ mesh, phase, height }, index) => {
+      const activity = Math.sin(frame.time * (0.11 + (index % 5) * 0.012) + phase * 5.4) * 0.5 + 0.5;
+      const precision = intelligence * (0.32 + activity * 0.68);
+
+      mesh.position.set(
+        Math.sin(phase * 2.3 + frame.time * 0.06) * (0.16 + intelligence * 0.11),
+        Math.cos(phase * 1.8 + frame.time * 0.05) * (0.14 + resolve * 0.08) + (height - 2.1) * 0.012,
+        Math.cos(phase * 1.7) * 0.14,
+      );
+      mesh.rotation.y = phase * 0.23 + precision * 0.32;
+      mesh.rotation.x = Math.sin(phase * 1.73 + frame.time * 0.05) * 0.22 - resolve * 0.13;
+      mesh.scale.set(1 + precision * 0.08, 1 + resolve * 0.14, 1 + precision * 0.12);
+    });
+
+    materials.aegis.uniforms.uTime.value = frame.time;
+    materials.aegis.uniforms.uProgress.value = frame.progress;
+    materials.aegis.uniforms.uEnergy.value = 0.1 + intelligence * 0.55 + resolve * 0.16;
+    materials.filaments.uniforms.uTime.value = frame.time;
+    materials.filaments.uniforms.uOpacity.value = 0.05 + entrance * 0.16 + intelligence * 0.22 - finality * 0.12;
+
+    key.intensity = 1.2 + entrance * 1.2 + finality * 0.45;
+    rim.intensity = 5 + intelligence * 16 + resolve * 10;
+    depth.intensity = 3.5 + resolve * 8;
+    rim.position.x = 3.5 + Math.sin(frame.time * 0.13) * 1.2;
+
+    if (scene.fog instanceof THREE.FogExp2) {
+      scene.fog.density = 0.044 - entrance * 0.015 - intelligence * 0.008 + finality * 0.004;
+      scene.fog.color.set(finality > 0.35 ? "#f5f8f7" : "#edf5f4");
+    }
+
+    if (scene.background instanceof THREE.Color) {
+      scene.background.set(finality > 0.35 ? "#f8fbfa" : "#edf3f2");
+    }
+  };
+
+  const dispose = () => {
+    root.traverse((object) => {
+      if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.Points) {
+        object.geometry.dispose();
+      }
+    });
+
+    materials.aegis.dispose();
+    materials.filaments.dispose();
+    scene.remove(root, hemisphere, key, rim, depth);
+  };
+
+  return { root, field, materials, update, dispose };
+}
+==================================================
+FILE: src/shaders/Materials.ts
+==================================================
+import * as THREE from "three";
+
+export type AegisMaterial = THREE.ShaderMaterial & {
+  uniforms: {
+    uTime: { value: number };
+    uProgress: { value: number };
+    uEnergy: { value: number };
+    uBaseColor: { value: THREE.Color };
+    uEdgeColor: { value: THREE.Color };
+  };
+};
+
+export type FilamentMaterial = THREE.ShaderMaterial & {
+  uniforms: {
+    uTime: { value: number };
+    uOpacity: { value: number };
+    uColor: { value: THREE.Color };
+  };
+};
+
+export type ParticleMaterial = THREE.ShaderMaterial & {
+  uniforms: {
+    uTime: { value: number };
+    uProgress: { value: number };
+    uOpacity: { value: number };
+    uScale: { value: number };
+    uColor: { value: THREE.Color };
+    uPointer: { value: THREE.Vector2 };
+  };
+};
+
+export function createAegisMaterial(
+  baseColor = "#dceef1",
+  edgeColor = "#7fdbe5",
+): AegisMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: true,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uProgress: { value: 0 },
+      uEnergy: { value: 0.1 },
+      uBaseColor: { value: new THREE.Color(baseColor) },
+      uEdgeColor: { value: new THREE.Color(edgeColor) },
+    },
+    vertexShader: `
+      uniform float uTime;
+      uniform float uProgress;
+      uniform float uEnergy;
+      attribute float aPhase;
+      attribute float aLift;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying float vPhase;
+      varying float vLift;
+
+      float wave(float value) {
+        return sin(value) * 0.52 + sin(value * 0.47 + 1.7) * 0.27 + sin(value * 1.91 + 0.8) * 0.12;
+      }
+
+      void main() {
+        float motion = wave(aPhase * 8.0 + uTime * 0.22 + uProgress * 4.0);
+        vec3 displaced = position + normal * motion * mix(0.018, 0.105, uEnergy);
+        displaced += normal * sin(aLift * 9.0 + uTime * 0.16) * 0.018;
+        vec4 modelPosition = modelMatrix * vec4(displaced, 1.0);
+        vec4 modelViewPosition = viewMatrix * modelPosition;
+        vNormal = normalize(normalMatrix * normal);
+        vViewPosition = -modelViewPosition.xyz;
+        vPhase = aPhase;
+        vLift = aLift;
+        gl_Position = projectionMatrix * modelViewPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uProgress;
+      uniform float uEnergy;
+      uniform vec3 uBaseColor;
+      uniform vec3 uEdgeColor;
+      varying vec3 vNormal;
+      varying vec3 vViewPosition;
+      varying float vPhase;
+      varying float vLift;
+
+      void main() {
+        float fresnel = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewPosition)), 0.0), 2.35);
+        float striation = sin(vLift * 72.0 + vPhase * 17.0 + uTime * 0.12) * 0.5 + 0.5;
+        float flow = sin(vPhase * 11.0 - uTime * 0.16 + uProgress * 5.5) * 0.5 + 0.5;
+        vec3 color = mix(uBaseColor * 0.72, uEdgeColor, fresnel * 0.84);
+        color += uEdgeColor * striation * 0.075;
+        color += vec3(0.84, 0.96, 1.0) * flow * uEnergy * 0.18;
+        float alpha = (mix(0.19, 0.72, fresnel) + striation * 0.08) * mix(0.82, 1.0, flow);
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  }) as AegisMaterial;
+}
+
+export function createFilamentMaterial(color = "#9adfe8"): FilamentMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uOpacity: { value: 0 },
+      uColor: { value: new THREE.Color(color) },
+    },
+    vertexShader: `
+      uniform float uTime;
+      varying float vPulse;
+
+      void main() {
+        vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+        vec4 modelViewPosition = viewMatrix * modelPosition;
+        vPulse = sin(position.x * 1.9 + position.y * 2.7 + position.z * 1.3 + uTime * 0.32) * 0.5 + 0.5;
+        gl_Position = projectionMatrix * modelViewPosition;
+      }
+    `,
+    fragmentShader: `
+      uniform float uOpacity;
+      uniform vec3 uColor;
+      varying float vPulse;
+
+      void main() {
+        gl_FragColor = vec4(uColor, uOpacity * mix(0.36, 1.0, vPulse));
+      }
+    `,
+  }) as FilamentMaterial;
+}
+
+export function createParticleMaterial(color = "#b5f2f4"): ParticleMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+      uProgress: { value: 0 },
+      uOpacity: { value: 0.6 },
+      uScale: { value: 1 },
+      uColor: { value: new THREE.Color(color) },
+      uPointer: { value: new THREE.Vector2() },
+    },
+    vertexShader: `
+      uniform float uTime;
+      uniform float uProgress;
+      uniform float uScale;
+      uniform vec2 uPointer;
+      attribute float aSeed;
+      attribute float aScale;
+      varying float vAlpha;
+
+      void main() {
+        vec3 transformed = position;
+        float phase = aSeed * 6.28318530718;
+        transformed.x += sin(phase + uTime * 0.09) * 0.11;
+        transformed.y += sin(uTime * (0.08 + aSeed * 0.12) + phase) * 0.16;
+        transformed.z += cos(phase * 1.7 + uTime * 0.07) * 0.09;
+        vec2 field = transformed.xy - uPointer * 2.2;
+        transformed.xy += normalize(field + 0.0001) * smoothstep(1.65, 0.12, length(field)) * 0.035;
+        vec4 modelViewPosition = modelViewMatrix * vec4(transformed, 1.0);
+        gl_PointSize = (1.4 + aScale * 2.3) * uScale * clamp(24.0 / max(1.0, -modelViewPosition.z), 0.55, 2.2);
+        gl_Position = projectionMatrix * modelViewPosition;
+        vAlpha = mix(0.34, 1.0, aScale) * mix(0.86, 1.0, uProgress);
+      }
+    `,
+    fragmentShader: `
+      uniform float uOpacity;
+      uniform vec3 uColor;
+      varying float vAlpha;
+
+      void main() {
+        float alpha = smoothstep(0.5, 0.03, length(gl_PointCoord - 0.5)) * uOpacity * vAlpha;
+        gl_FragColor = vec4(uColor, alpha);
+      }
+    `,
+  }) as ParticleMaterial;
+}
+==================================================
+FILE: src/utils/math.ts
+==================================================
+export const clamp = (value: number, minimum = 0, maximum = 1) =>
+  Math.min(Math.max(value, minimum), maximum);
+
+export const lerp = (from: number, to: number, amount: number) =>
+  from + (to - from) * amount;
+
+export const smoothstep = (minimum: number, maximum: number, value: number) => {
+  const normalized = clamp((value - minimum) / (maximum - minimum));
+  return normalized * normalized * (3 - 2 * normalized);
+};
+
+export const remap = (
+  value: number,
+  fromMinimum: number,
+  fromMaximum: number,
+  toMinimum: number,
+  toMaximum: number,
+) => toMinimum + ((value - fromMinimum) / (fromMaximum - fromMinimum)) * (toMaximum - toMinimum);
+
+export const damp = (current: number, target: number, smoothing: number, delta: number) =>
+  lerp(current, target, 1 - Math.exp(-smoothing * delta));
+
+export const easeInOutCubic = (value: number) =>
+  value < 0.5 ? 4 * value * value * value : 1 - Math.pow(-2 * value + 2, 3) / 2;
+
+export const easeOutExpo = (value: number) =>
+  value >= 1 ? 1 : 1 - Math.pow(2, -10 * value);
+
+export const degToRad = (degrees: number) => (degrees * Math.PI) / 180;
+
+export const radToDeg = (radians: number) => (radians * 180) / Math.PI;
