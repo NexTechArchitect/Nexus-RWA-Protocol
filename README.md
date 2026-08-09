@@ -1,3 +1,4 @@
+
 <div align="center">
 
 <img src="https://img.shields.io/badge/🏢_Nexus_RWA-Protocol-0052FF?style=for-the-badge&labelColor=0f172a&color=0052FF" height="36"/>
@@ -61,6 +62,7 @@ graph TD
 
     Oracle["NAV Oracle"] -.->|"Price Feeds"| Chainlink["Chainlink Aggregators"]
     Yield["Yield Distributor"] -.->|"Automated Epochs"| CL_Upkeep["Chainlink Automation"]
+
 ```
 
 ### 1. `IdentityRegistry.sol` (ERC-3643 Inspired)
@@ -124,7 +126,7 @@ Built entirely using the [Foundry](https://book.getfoundry.sh/) toolchain.
 
 ```bash
 # Clone the repository
-git clone https://github.com/NexTechArchitects/Nexus-RWA-Protocol.git
+git clone [https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git](https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git)
 cd Nexus-RWA-Protocol
 
 # Install dependencies
@@ -135,17 +137,11 @@ forge build
 
 # Execute the 219+ test suite
 forge test -vvv
-
-# Run stateful invariant fuzzing
-forge test --match-path test/invariant/InvariantProtocol.t.sol
 ```
 
 ---
 
-<div align="center">
+#### Architected & Engineered by [NexTech Architect](https://www.google.com/search?q=https://github.com/NexTechArchitect)
 
-#### Architected & Engineered by [NexTech Architects](https://github.com/NexTechArchitects)
+#### Smart Contract Security · RWA Tokenization · Foundry · Stack Web3
 
-#### Smart Contract Security · RWA Tokenization · Foundry · Full Stack Web3
-
-</div>
