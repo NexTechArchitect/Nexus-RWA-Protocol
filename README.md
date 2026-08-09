@@ -21,7 +21,7 @@
 
 <br>
 
-🌐 DApp Portal (Coming Soon) &nbsp;·&nbsp;
+🌐 [Nexus RWA DApp (Live)](https://nexus-rwa-protocol.vercel.app/) &nbsp;·&nbsp;
 [🔗 Core Asset Registry](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594)
 
 </div>
@@ -62,6 +62,7 @@ graph TD
 
     Oracle["NAV Oracle"] -.->|"Price Feeds"| Chainlink["Chainlink Aggregators"]
     Yield["Yield Distributor"] -.->|"Automated Epochs"| CL_Upkeep["Chainlink Automation"]
+
 
 ```
 
@@ -137,6 +138,7 @@ forge build
 
 # Execute the 219+ test suite
 forge test -vvv
+
 ```
 
 ---
@@ -144,4 +146,3 @@ forge test -vvv
 #### Architected & Engineered by [NexTech Architect](https://www.google.com/search?q=https://github.com/NexTechArchitect)
 
 #### Smart Contract Security · RWA Tokenization · Foundry · Stack Web3
-
