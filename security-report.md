@@ -5,7 +5,7 @@
 **Scope:** `AssetRegistry.sol`, `ComplianceEngine.sol`, `IdentityRegistry.sol`, `NAVOracle.sol`, `RWAToken.sol`, `YieldDistributor.sol`, `JurisdictionLib.sol`, `NAVLib.sol`
 
 ---
-
+ 
 ## Executive Summary
 
 **Nexus RWA Protocol** is an institutional-grade Real-World Asset (RWA) tokenization ecosystem deployed on Base Mainnet. It handles ERC-3643 compliant identity management, automated jurisdictional transfer enforcement, Chainlink-powered NAV pricing with circuit breakers, and Merkle-tree based yield distribution.
