@@ -125,7 +125,7 @@ The core protocol is live, verified via Sourcify, and operational on **Base Main
 
 Built entirely using the [Foundry](https://book.getfoundry.sh/) toolchain.
 
-```bash
+```bash 
 # Clone the repository
 git clone [https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git](https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git)
 cd Nexus-RWA-Protocol
