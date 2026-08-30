@@ -75,7 +75,6 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
         JurisdictionLib.InvestorData memory toData   = registry.getInvestorData(to);
         JurisdictionLib.AssetJurisdictionRule memory rule = registry.getJurisdictionRule(assetId);
 
-        // ✅ FIX: Capture the return value to silence Slither and add an extra layer of safety
         bool isCompliant = JurisdictionLib.checkTransferCompliance(from, to, fromData, toData, rule);
         if (!isCompliant) {
             revert TransferNotCompliant(from, to, assetId);
