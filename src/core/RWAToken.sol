@@ -89,7 +89,7 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
     /// @notice Burns tokens from an investor. Allowed for both registry and compliance engine.
     function burn(address from, uint256 amount) external override onlyRegistryOrCompliance whenNotPaused nonReentrant {
         if (from   == address(0)) revert ZeroAddress();
-        if (amount == 0)          revert ZeroAmount(); // FIX: Corrected from ZeroAddress()
+        if (amount == 0)          revert ZeroAmount(); 
 
         uint256 bal = balanceOf(from);
         if (bal < amount) revert BurnExceedsBalance(from, bal, amount);
