@@ -18,20 +18,14 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
     // STORAGE
     //==================================================
 
-    /// @notice Tracks globally blocked investors (investor => isBlocked)
     mapping(address => bool) private s_blocked;
-    
-    /// @notice Address of the core Asset Registry
     address private s_assetRegistry;
-    
-    /// @notice Address holding the exclusive Compliance Officer role
     address private s_complianceOfficer;
 
     //==================================================
     // MODIFIERS
     //==================================================
 
-    /// @dev Restricts execution to the designated Compliance Officer or the Contract Owner.
     modifier onlyOfficer() {
         if (msg.sender != s_complianceOfficer && msg.sender != owner()) {
             revert OnlyComplianceOfficer();
@@ -67,14 +61,16 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
 
         IAssetRegistry registry = IAssetRegistry(s_assetRegistry);
 
+        // Standard Asset & Whitelist Verification
+        if (!registry.isAssetActive(assetId)) revert TransferNotCompliant(from, to, assetId);
         if (!registry.isWhitelisted(assetId, from)) revert TransferNotCompliant(from, to, assetId);
         if (!registry.isWhitelisted(assetId, to))   revert TransferNotCompliant(from, to, assetId);
-        if (!registry.isAssetActive(assetId)) revert AssetNotRegistered(assetId);
 
         JurisdictionLib.InvestorData memory fromData = registry.getInvestorData(from);
         JurisdictionLib.InvestorData memory toData   = registry.getInvestorData(to);
         JurisdictionLib.AssetJurisdictionRule memory rule = registry.getJurisdictionRule(assetId);
 
+        // Deep Jurisdictional & KYC Verification
         bool isCompliant = JurisdictionLib.checkTransferCompliance(from, to, fromData, toData, rule);
         if (!isCompliant) {
             revert TransferNotCompliant(from, to, assetId);
@@ -93,9 +89,9 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
 
         IAssetRegistry registry = IAssetRegistry(s_assetRegistry);
 
+        if (!registry.isAssetActive(assetId))       return false;
         if (!registry.isWhitelisted(assetId, from)) return false;
         if (!registry.isWhitelisted(assetId, to))   return false;
-        if (!registry.isAssetActive(assetId))       return false;
 
         JurisdictionLib.InvestorData memory fromData = registry.getInvestorData(from);
         JurisdictionLib.InvestorData memory toData   = registry.getInvestorData(to);
@@ -108,7 +104,6 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
     // INVESTOR CONTROLS
     //==================================================
 
-    /// @inheritdoc IComplianceEngine
     function blockInvestor(address investor) external override onlyOfficer {
         if (investor == address(0))  revert ZeroAddress();
         if (s_blocked[investor])     revert InvestorAlreadyBlocked(investor);
@@ -117,7 +112,6 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
         emit InvestorBlocked(investor, msg.sender);
     }
 
-    /// @inheritdoc IComplianceEngine
     function unblockInvestor(address investor) external override onlyOfficer {
         if (investor == address(0)) revert ZeroAddress();
         if (!s_blocked[investor])   revert InvestorNotBlocked(investor);
@@ -130,23 +124,19 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
     // ASSET CONTROLS
     //==================================================
 
-    /// @inheritdoc IComplianceEngine
     function freezeAsset(bytes32 assetId) external override onlyOfficer {
         if (assetId == bytes32(0)) revert AssetNotRegistered(assetId);
 
         emit AssetFrozen(assetId, msg.sender);
         
-        // Interaction after Effect (CEI)
         IAssetRegistry(s_assetRegistry).freezeAsset(assetId);
     }
 
-    /// @inheritdoc IComplianceEngine
     function unfreezeAsset(bytes32 assetId) external override onlyOfficer {
         if (assetId == bytes32(0)) revert AssetNotRegistered(assetId);
 
         emit AssetUnfrozen(assetId, msg.sender);
         
-        // Interaction after Effect (CEI)
         IAssetRegistry(s_assetRegistry).unfreezeAsset(assetId);
     }
 
@@ -154,7 +144,6 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
     // FORCED TRANSFER
     //==================================================
 
-    /// @inheritdoc IComplianceEngine
     function executeForcedTransfer(
         bytes32 assetId,
         address token,
@@ -169,14 +158,12 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
         if (from    == to)          revert SelfTransfer(from);
         if (assetId == bytes32(0))  revert AssetNotRegistered(assetId);
 
-        // Security Check: Verify token actually belongs to the assetId
         if (IRWAToken(token).assetId() != assetId) {
             revert AssetNotRegistered(assetId);
         }
 
         emit ForcedTransferExecuted(assetId, from, to, amount);
         
-        // External call strictly at the end (CEI)
         IRWAToken(token).forcedTransfer(from, to, amount);
     }
 
@@ -184,7 +171,6 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
     // ADMIN & VIEW FUNCTIONS
     //==================================================
 
-    /// @inheritdoc IComplianceEngine
     function setComplianceOfficer(address newOfficer) external override onlyOwner {
         if (newOfficer == address(0)) revert ZeroAddress();
         address old         = s_complianceOfficer;
@@ -192,7 +178,6 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
         emit ComplianceOfficerUpdated(old, newOfficer);
     }
 
-    /// @inheritdoc IComplianceEngine
     function setAssetRegistry(address newRegistry) external override onlyOwner {
         if (newRegistry == address(0)) revert ZeroAddress();
         address old     = s_assetRegistry;
@@ -200,17 +185,14 @@ contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
         emit AssetRegistryUpdated(old, newRegistry);
     }
 
-    /// @inheritdoc IComplianceEngine
     function isBlocked(address investor) external view override returns (bool) {
         return s_blocked[investor];
     }
 
-    /// @inheritdoc IComplianceEngine
     function getComplianceOfficer() external view override returns (address) {
         return s_complianceOfficer;
     }
 
-    /// @inheritdoc IComplianceEngine
     function getAssetRegistry() external view override returns (address) {
         return s_assetRegistry;
     }
