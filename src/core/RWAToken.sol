@@ -7,10 +7,11 @@ import { Ownable2Step, Ownable } from "@openzeppelin/contracts/access/Ownable2St
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { IRWAToken }       from "../interfaces/IRWAToken.sol";
 import { IAssetRegistry }  from "../interfaces/IAssetRegistry.sol";
+import { IComplianceEngine } from "../interfaces/IComplianceEngine.sol";
 
 /// @title RWAToken
 /// @notice Compliance-enforced ERC-20 for Nexus RWA Protocol.
-contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGuard{
+contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGuard {
 
     //==================================================
     // STORAGE
@@ -19,14 +20,10 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
     bytes32 private immutable i_assetId;
     address private s_assetRegistry;
     address private s_complianceEngine;
+
     //==================================================
     // MODIFIERS
     //==================================================
-
-    modifier onlyRegistry() {
-        if (msg.sender != s_assetRegistry) revert CallerNotRegistry();
-        _;
-    }
 
     modifier onlyCompliance() {
         if (msg.sender != s_complianceEngine) revert CallerNotCompliance();
@@ -39,6 +36,7 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
         }
         _;
     }
+
     //==================================================
     // CONSTRUCTOR
     //==================================================
@@ -61,12 +59,13 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
         s_assetRegistry    = assetRegistry_;
         s_complianceEngine = complianceEngine_;
     }
+
     //==================================================
     // CORE FUNCTIONS
     //==================================================
 
-    /// @notice Mints new tokens. Only the registry can trigger this securely.
-    function mint(address to, uint256 amount) external override onlyRegistry whenNotPaused nonReentrant{
+    /// @notice Mints new tokens. 
+    function mint(address to, uint256 amount) external override onlyOwner whenNotPaused nonReentrant {
         if (to == address(0))  revert ZeroAddress();
         if (amount == 0)       revert ZeroAmount();
 
@@ -76,7 +75,8 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
         if (!registry.isWhitelisted(i_assetId, to)) revert NotWhitelisted(to);
         
         if (!registry.isMintAllowed(i_assetId, amount)) {
-            revert MintCapExceeded(i_assetId, 0, amount);
+            uint256 currentCap = registry.getAssetInfo(i_assetId).totalSupplyCap;
+            revert MintCapExceeded(i_assetId, currentCap, amount);
         }
 
         _mint(to, amount);
@@ -85,13 +85,14 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
 
         emit Minted(i_assetId, to, amount);
     }
+
     /// @notice Burns tokens from an investor. Allowed for both registry and compliance engine.
-    function burn(address from, uint256 amount) external override onlyRegistryOrCompliance whenNotPaused nonReentrant{
-        if(from   == address(0)) revert ZeroAddress();
-        if(amount == 0)          revert ZeroAddress();  
+    function burn(address from, uint256 amount) external override onlyRegistryOrCompliance whenNotPaused nonReentrant {
+        if (from   == address(0)) revert ZeroAddress();
+        if (amount == 0)          revert ZeroAmount(); // FIX: Corrected from ZeroAddress()
 
         uint256 bal = balanceOf(from);
-        if(bal< amount) revert BurnExceedsBalance(from, bal , amount);
+        if (bal < amount) revert BurnExceedsBalance(from, bal, amount);
 
         _burn(from, amount);
 
@@ -99,8 +100,9 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
 
         emit Burned(i_assetId, from, amount);
     }
+
     /// @notice Forcefully moves tokens for legal/compliance reasons, bypassing the whitelist.
-    function forcedTransfer(address from, address to, uint256 amount) external override onlyCompliance {
+    function forcedTransfer(address from, address to, uint256 amount) external override onlyCompliance nonReentrant {
         if (from == address(0) || to == address(0)) revert ZeroAddress();
         if (amount == 0) revert ZeroAmount();
 
@@ -111,27 +113,25 @@ contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGu
 
         emit ForcedTransfer(i_assetId, from, to, amount);
     }
+
     //==================================================
     // TRANSFER HOOK
     //==================================================
 
-    /// @notice Ensures all P2P transfers happen only between whitelisted accounts.
+    /// @notice Ensures all P2P transfers happen only between legally compliant accounts.
     function _update(
         address from, 
         address to,
         uint256 amount
     ) internal override(ERC20, ERC20Pausable) {
 
-        if(from != address(0) && to != address(0)) {
-            IAssetRegistry registry = IAssetRegistry(s_assetRegistry);
-
-        if (!registry.isWhitelisted(i_assetId, from)) revert NotWhitelisted(from);
-            if (!registry.isWhitelisted(i_assetId, to))   revert NotWhitelisted(to);
-            if (!registry.isAssetActive(i_assetId))       revert AssetNotActive(i_assetId);
+        if (from != address(0) && to != address(0)) {
+            IComplianceEngine(s_complianceEngine).enforceTransferCompliance(i_assetId, from, to);
         }
 
         super._update(from, to, amount);
     }
+
     //==================================================
     // ADMIN FUNCTIONS
     //==================================================
