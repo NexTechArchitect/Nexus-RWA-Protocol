@@ -1,149 +1,149 @@
 <div align="center">
 
 <img src="https://img.shields.io/badge/🏢_Nexus_RWA-Protocol-0052FF?style=for-the-badge&labelColor=0f172a&color=0052FF" height="36"/>
- 
-# Nexus RWA Protocol 
+
+# Nexus RWA Protocol
 ### Institutional-Grade Real-World Asset Tokenization · Base Mainnet
-  
-<br>   
+
+<br>
 
 [![License](https://img.shields.io/badge/License-MIT-22c55e?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Foundry](https://img.shields.io/badge/Built_With-Foundry-F0B90B?style=flat-square)](https://book.getfoundry.sh/)
 [![Network](https://img.shields.io/badge/Network-Base_Mainnet-0052FF?style=flat-square)](https://basescan.org/)
-[![Audit](https://img.shields.io/badge/Slither_&_Fuzzed-0_Critical-22c55e?style=flat-square)](#-security--testing-model)
+[![Tests](https://img.shields.io/badge/Tests-219_Passing-22c55e?style=flat-square)](#)
+[![Slither](https://img.shields.io/badge/Slither-0_Critical_0_High-22c55e?style=flat-square)](#)
 
 <br>
 
-> **Bridging Traditional Finance (TradFi) and Decentralized Finance (DeFi) safely.**<br>
-> A robust smart contract engine that embeds global compliance, identity verification (KYC),
-> real-time NAV pricing, and automated yield distribution directly into the token layer.
+> **Standard ERC-20 is the wrong primitive for regulated assets.**
+> Nexus RWA encodes the compliance rulebook into the token itself. KYC, sanction enforcement,
+> jurisdictional restrictions, and yield distribution run entirely on-chain. No off-chain gates.
 
 <br>
 
-🌐 [Nexus RWA DApp (Live)](https://nexus-rwa-protocol.vercel.app/) &nbsp;·&nbsp;
-[🔗 Core Asset Registry](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594)
+[🚀 Live DApp](https://nexus-rwa-protocol.vercel.app/) &nbsp;·&nbsp;
+[Assets](https://nexus-rwa-protocol.vercel.app/assets) &nbsp;·&nbsp;
+[Identity](https://nexus-rwa-protocol.vercel.app/identity) &nbsp;·&nbsp;
+[Compliance](https://nexus-rwa-protocol.vercel.app/compliance) &nbsp;·&nbsp;
+[Oracle](https://nexus-rwa-protocol.vercel.app/oracle) &nbsp;·&nbsp;
+[Yield](https://nexus-rwa-protocol.vercel.app/yield) &nbsp;·&nbsp;
+[Docs](https://nexus-rwa-protocol.vercel.app/docs) &nbsp;·&nbsp;
+[🔗 Core Registry on Basescan](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594)
 
 </div>
 
----
 
-## 📖 Overview
+## The Problem
 
-Standard ERC-20 tokens are permissionless, making them unsuitable for heavily regulated Real-World Assets (RWAs) like US Treasury Bills, Real Estate, or Corporate Bonds.
+Most RWA tokenization projects bolt compliance on as an afterthought, a centralized server that approves transfers before they land on-chain. The blockchain records the outcome but not the rule. That compliance is invisible, revocable, and not verifiable by anyone reading the chain.
 
-The **Nexus RWA Protocol** solves this by abstracting legal complexity into immutable code. Every token mint, burn, and peer-to-peer transfer is intercepted and validated against an on-chain compliance engine. It ensures that tokens can only be held by verified, non-sanctioned investors who meet specific jurisdictional and accreditation rules. Coupled with Chainlink-automated Merkle yield drops and circuit-breaking NAV oracles, it provides a complete ecosystem for tokenized securities.
+A US T-Bill cannot legally be held by an Iranian national. A corporate bond cannot be sold to an unaccredited investor in a restricted jurisdiction. These rules exist in securities law regardless of what the blockchain does.
 
----
+Nexus RWA solves this by encoding the compliance rulebook directly into the token. Every mint, burn, and peer-to-peer transfer is evaluated against KYC status, OFAC sanction lists, accreditation tiers, and supply caps in a single atomic transaction. The rule is the contract. There is no off-chain gate to bypass, no approval to revoke, no server to take down.
 
-## 🎯 Why This Matters
 
-| Traditional/Basic Tokenization | Nexus RWA Protocol |
-| :--- | :--- |
-| **Manual Compliance** (Off-chain checks, easily bypassed) | **Embedded Rulebook** (Transfers revert instantly if KYC/Sanction rules fail) |
-| **No Legal Recourse** (Lost/stolen keys mean lost assets) | **Legal Clawbacks** (Authorized `forcedTransfer` for court-ordered recovery) |
-| **Gas-Heavy Payouts** (Looping through holders to pay yield) | **O(1) Gas Merkle Claims** (Chainlink Automation + Off-chain Merkle trees) |
-| **Oracle Manipulation** (Flash crash vulnerabilities) | **15% Circuit Breaker** (Automatic pause on >15% NAV drop in 24 hours) |
+## How It Works
 
----
-
-## 🏛️ Protocol Architecture
-
-The protocol separates concerns into distinct, hyper-optimized smart contracts. Identity is decoupled from the asset, and compliance logic is isolated from the token itself.
-
-```mermaid
-graph TD
-    User["Investor Wallet"] -->|"transfer()"| Token["RWAToken (ERC20)"]
-
-    Token -.->|"1. intercept _update()"| CE["ComplianceEngine"]
-
-    CE -->|"2. Check Rules"| AR["AssetRegistry"]
-    CE -->|"3. Check KYC/Sanction"| IR["IdentityRegistry"]
-
-    Oracle["NAV Oracle"] -.->|"Price Feeds"| Chainlink["Chainlink Aggregators"]
-    Yield["Yield Distributor"] -.->|"Automated Epochs"| CL_Upkeep["Chainlink Automation"]
-
+The protocol is six contracts with strict separation of concerns. Identity does not know about assets. Assets do not execute compliance. Compliance does not hold any funds.
 
 ```
+INVESTOR / DAPP
+        |
+        v
+  RWAToken._update()           intercepts every balance movement
+        |
+        v
+  ComplianceEngine             blacklist · sanction · whitelist · jurisdiction
+     |          |
+     v          v
+IdentityRegistry   AssetRegistry
+KYC · tier ·       supply cap · maturity ·
+country · expiry   per-asset whitelist
 
-### 1. `IdentityRegistry.sol` (ERC-3643 Inspired)
+NAVOracle           YieldDistributor
+Chainlink feeds ·   Merkle tree ·
+15% circuit breaker Chainlink Automation
+```
 
-The identity hub. Stores cryptographic commitments to off-chain PII (Personally Identifiable Information). Tracks verification tiers (Basic, KYC, Accredited), physical country codes, and strictly enforces global OFAC sanction checks.
+### Transfer Flow
 
-### 2. `AssetRegistry.sol` (The Asset Ledger)
+Every transfer runs four gates in sequence. One fails, the entire transaction reverts.
 
-Manages the lifecycle of multiple RWAs. Defines supply caps, maturity dates, and asset-specific jurisdictional rules (e.g., "Asset A can only be traded by Accredited US investors").
+**Gate 1. Global blacklist and sanction check.** Both wallets checked against the ComplianceEngine blacklist and OFAC-hardcoded jurisdictions in JurisdictionLib. Iran (364), North Korea (408), Russia (643), Syria (760), Cuba (192), Venezuela (862) are permanent constants. No oracle, no feed, no delay.
 
-### 3. `ComplianceEngine.sol` (The Gatekeeper)
+**Gate 2. Per-asset whitelist.** Each asset has its own whitelist in AssetRegistry. Protocol-level KYC clearance is not sufficient. Per-asset registration is required for every individual security.
 
-The central rulebook. It hooks into the `RWAToken` to evaluate every transfer in real-time. It manages global investor blacklisting, protocol-wide asset freezing, and executes authorized legal clawbacks.
+**Gate 3. Jurisdiction and accreditation.** JurisdictionLib checks whether the asset allows all jurisdictions or specific pairs. Accreditation level is enforced on the receiver, not the sender.
 
-### 4. `NAVOracle.sol` (The Price Feed)
+**Gate 4. Asset lifecycle and KYC expiry.** AssetRegistry confirms the asset is ACTIVE and not past maturity. KYC expiry is checked per wallet. Once expired, transfers revert with `KYCExpired` regardless of whitelist status.
 
-Integrates with Chainlink Data Feeds to provide real-time Net Asset Value (NAV). Includes a strict staleness guard and an autonomous **15% circuit breaker** that halts reads if a 24-hour flash crash is detected.
+All of this runs inside `_update()`, the same hook OpenZeppelin calls for every ERC-20 balance movement. There is no way to route around it from outside the contract.
 
-### 5. `YieldDistributor.sol` (The Payout Engine)
 
-A hyper-efficient, pull-based yield distributor. Uses off-chain Merkle Trees to allocate yield (USDC) to thousands of investors without blowing block gas limits. Cycles are seamlessly advanced via Chainlink Automation.
+## The Six Contracts
 
----
+### IdentityRegistry
 
-## 🛡️ The Nexus Difference: Security by Design
+ERC-3643 inspired identity hub. Stores cryptographic commitments to off-chain PII. No raw personal data on-chain. Five verification tiers: NONE, BASIC, KYC, ACCREDITED, INSTITUTIONAL. Tier upgrades are unidirectional by design. A wallet can only move up, never down. KYC expiry is a 365-day window enforced on every transfer; `renewKYC()` refreshes it without re-registration. Identity is registered once and shared across every asset on the protocol.
 
-Most traditional RWA protocols rely heavily on centralized multisigs, delayed off-chain API approvals for transfers, and bloated monolithic contracts. **Nexus RWA** introduces a radically different, mathematically verified approach:
+### AssetRegistry
 
-* **Stateless Real-Time Compliance:** The `ComplianceEngine` evaluates complex jurisdictional and sanction rules entirely on-chain in `O(1)` time. No off-chain API delays, no centralized approvals required for peer-to-peer secondary trading.
-* **Strictly Decoupled Architecture:** Funds (Yield), ledgers (Assets), and rules (Compliance) are heavily siloed. A logic bug in yield distribution can never compromise the compliance registry or the asset ledger.
-* **Mathematical Certainty:** Instead of relying solely on basic unit testing, the protocol's core constraints (e.g., *Total Supply <= Supply Cap*, *Blocked Investors = Zero Balance*) are mathematically proven against millions of chaotic, randomized state transitions using **Stateful Invariant Fuzzing**.
-* **Zero-Trust Legal Recovery:** Court-ordered asset recoveries (`forcedTransfer`) do not require dangerous proxy upgrades. They are natively built-in, role-gated, and emit immutable cryptographic proofs on-chain.
+The supply ledger. Manages lifecycle (ACTIVE, PAUSED, FROZEN, REDEEMED), supply caps, maturity dates, and per-asset jurisdiction rules for four asset classes: T-Bills, real estate, corporate bonds, commodities. `recordMint()` and `recordBurn()` are called by the token on every supply change. The registry is always the source of truth on minted supply.
 
----
+### ComplianceEngine
 
-## 🔒 Security & Testing Model
+The central gatekeeper. Hooks into RWAToken to evaluate every transfer in real time. Manages global investor blacklisting, per-asset freeze/unfreeze, and legal forced transfers. `executeForcedTransfer()` bypasses the whitelist by calling `ERC20._update()` directly. Court-ordered seizures without proxy upgrades or contract migrations.
 
-* **Mathematically Proven Security:** 100% test coverage across 219+ unit/integration tests and stateful invariant fuzzing (5,000+ random sequence calls) verifying non-whitelisted balance, cap breach, and yield double-claim invariants.
-* **Audit & Static Analysis:** Built with strict CEI patterns and verified via Slither (v0.10) with 0 Critical / 0 High vulnerabilities. Complete findings and design trade-offs are documented in security-report.md
+### RWAToken
 
----
+Compliance-enforced ERC-20. `_update()` is overridden at the lowest level to call ComplianceEngine before any balance bit moves. `mint()` validates whitelist and supply cap before touching supply. `forcedTransfer()` is gated to ComplianceEngine only. Fully pausable. Supports multiple assets from a single implementation via the `assetId` binding.
 
-## ✅ Deployed Contracts (Base Mainnet)
+### NAVOracle
 
-The core protocol is live, verified via Sourcify, and operational on **Base Mainnet** (Chain ID: `8453`).
+Chainlink AggregatorV3 integration with a full validation pipeline on every read: round validity, round completeness, staleness guard (1 hour max), negative price rejection, dust price floor. Stores a 24-hour price snapshot per asset. If any subsequent read comes in more than 15% below that snapshot within the same window, the circuit breaker trips autonomously and all reads for that asset revert until the guardian manually resets it. Deliberate friction: automated systems should not silently resume after a 15% NAV crash.
 
-| Component | Contract Address |
+### YieldDistributor
+
+Pull-payment yield distribution that scales to any number of holders. The full allocation list is computed off-chain and committed as a 32-byte Merkle root. Investors claim by submitting their amount and a Merkle proof, constant-gas regardless of protocol size. Epoch cycles advance automatically via Chainlink Automation; no operator calls, no cron jobs. `s_hasClaimed[epochId][investor]` is written before the token transfer. Reentrant claims see the flag and revert with `AlreadyClaimed`. Batch claiming across up to 50 epochs in a single transaction.
+
+
+## Deployed Contracts · Base Mainnet
+
+| Contract | Address |
 | --- | --- |
-| **Identity Registry** | [`0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A`](https://basescan.org/address/0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A) |
-| **Asset Registry** | [`0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594`](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594) |
-| **Compliance Engine** | [`0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c`](https://basescan.org/address/0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c) |
-| **NAV Oracle** | [`0xE4BeA2a081BA5d7137618840aFD012883014cbdD`](https://basescan.org/address/0xE4BeA2a081BA5d7137618840aFD012883014cbdD) |
+| **IdentityRegistry** | [`0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A`](https://basescan.org/address/0x18026c0BF58c978caDc8Df7f31b1cbC2f6A94c5A) |
+| **AssetRegistry** | [`0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594`](https://basescan.org/address/0x88bb8025dc10Cc642d2F0D10F4335EcDBdC9A594) |
+| **ComplianceEngine** | [`0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c`](https://basescan.org/address/0x00c0E82e0C81c4Df096aAd98f2aA5A399b34131c) |
+| **NAVOracle** | [`0xE4BeA2a081BA5d7137618840aFD012883014cbdD`](https://basescan.org/address/0xE4BeA2a081BA5d7137618840aFD012883014cbdD) |
 | **Genesis Token (nUSTB)** | [`0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE`](https://basescan.org/address/0xFDFda5Ca91bDC022EC85C9F2bE5d29A33f874EDE) |
-| **Yield Distributor** | [`0x8cbdAC28819d95b8425a0BdFD37610075F021996`](https://basescan.org/address/0x8cbdAC28819d95b8425a0BdFD37610075F021996) |
+| **YieldDistributor** | [`0x8cbdAC28819d95b8425a0BdFD37610075F021996`](https://basescan.org/address/0x8cbdAC28819d95b8425a0BdFD37610075F021996) |
 
----
 
-## 🛠️ Local Setup & Testing
+## What Can Be Built On This
 
-Built entirely using the [Foundry](https://book.getfoundry.sh/) toolchain.
+The compliance infrastructure here is not specific to any one asset class. Any protocol that needs permissioned token transfers with on-chain identity verification can plug into it.
 
-```bash 
-# Clone the repository
-git clone [https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git](https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git)
+Real estate tokenization with jurisdiction-specific investor pools. Corporate bonds with automated coupon distribution. Stablecoin systems where KYC is a transfer requirement. Lending protocols that want to enforce accreditation on collateral. Tokenized fund shares with automated NAV pricing and monthly yield settlement.
+
+The architecture was deliberately designed with separation so that new asset types, new jurisdiction rules, and new yield strategies can be added without touching the compliance or identity layer.
+
+
+## Local Setup
+
+```bash
+git clone https://github.com/NexTechArchitect/Nexus-RWA-Protocol.git
 cd Nexus-RWA-Protocol
 
-# Install dependencies
 forge install
- 
-# Compile contracts
 forge build
-
-# Execute the 219+ test suite
 forge test -vvv
-
 ```
 
----
 
 <div align="center">
 
-#### Architected & Engineered by [NexTech Architect](https://www.google.com/search?q=https://github.com/NexTechArchitect)
+Architected and engineered by [NexTech Architect](https://github.com/NexTechArchitect)
 
-#### Smart Contract Security · RWA Tokenization · Foundry · Stack Web3
+Smart Contract Security · RWA Tokenization · Foundry · Full Stack Web3
+
+</div>
