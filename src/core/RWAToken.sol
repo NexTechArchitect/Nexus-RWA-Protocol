@@ -9,7 +9,7 @@ import { IRWAToken }       from "../interfaces/IRWAToken.sol";
 import { IAssetRegistry }  from "../interfaces/IAssetRegistry.sol";
 import { IComplianceEngine } from "../interfaces/IComplianceEngine.sol";
 
-/// @title RWAToken
+/// @title RWAToken        
 /// @notice Compliance-enforced ERC-20 for Nexus RWA Protocol.
 contract RWAToken is IRWAToken, ERC20, ERC20Pausable, Ownable2Step, ReentrancyGuard {
 
