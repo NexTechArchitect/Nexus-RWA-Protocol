@@ -13,7 +13,7 @@ import { JurisdictionLib }       from "../libraries/JurisdictionLib.sol";
 /// @dev Manages global blacklists, asset freezes, forced transfers, and delegates 
 ///      jurisdictional validation to the JurisdictionLib.
 contract ComplianceEngine is IComplianceEngine, Ownable2Step, ReentrancyGuard {
-
+                
     //==================================================
     // STORAGE
     //==================================================
