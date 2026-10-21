@@ -138,12 +138,12 @@ forge install
 forge build
 forge test -vvv
 ```
-
+  
 
 <div align="center">
 
 Architected and engineered by [NexTech Architect](https://github.com/NexTechArchitect)
 
-Smart Contract Security · RWA Tokenization · Foundry · Full Stack Web3
+Smart Contract · RWA Tokenization · Foundry · Full Stack Web3
 
 </div>
