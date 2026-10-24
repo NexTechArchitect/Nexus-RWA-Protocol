@@ -46,7 +46,7 @@ Nexus RWA solves this by encoding the compliance rulebook directly into the toke
 
 The protocol is six contracts with strict separation of concerns. Identity does not know about assets. Assets do not execute compliance. Compliance does not hold any funds.
 
-```
+```          
 INVESTOR / DAPP
         |
         v
